@@ -1,0 +1,98 @@
+Ошибка сервера	Server error
+Нет связи с сервером: %s	No connection to server: %s
+Это не токен Lite 404. Он начинается с L404-	This is not a Lite 404 token. It starts with L404-
+Лимит устройств	Device limit
+На вашей подписке уже подключено максимум устройств. Откройте бота → «Устройства» и удалите ненужное, затем нажмите «Обновить подписку».	Your subscription already has the maximum number of devices. Open the bot → «Devices», remove one you don't need, then tap «Refresh subscription».
+Открыть бота	Open bot
+Закрыть	Close
+Введите токен из бота	Enter the token from the bot
+Вставить	Paste
+Войти	Sign in
+Токен выдаёт бот @lite404bot	The token is issued by the bot @lite404bot
+время	time
+Не удалось подготовить конфиг: %s	Could not prepare config: %s
+время подключения	connection time
+Нет серверов. Нажмите «Обновить подписку»	No servers. Tap «Refresh subscription»
+Ошибка: 	Error: 
+Трафик	Traffic
+Подписка обновлена	Subscription updated
+Обновить подписку	Refresh subscription
+Серверы	Servers
+Нет серверов	No servers
+Подписка выключена	Subscription disabled
+Подписка бессрочная	Subscription never expires
+Осталось %s · до %s	Days left: %s · until %s
+Не удалось включить WDTT	Could not turn on WDTT
+Аварийный туннель VK	VK emergency tunnel
+Когда обычный VPN не работает — трафик идёт через звонки VK	When regular VPN doesn't work, traffic goes through VK calls
+Добавьте хеш VK в боте	Add your VK hash in the bot
+Для вас нет серверов WDTT	No WDTT servers for you
+Хеш VK не задан. Добавьте его в боте и нажмите «Обновить подписку» на вкладке VPN.	VK hash is not set. Add it in the bot and tap «Refresh subscription» on the VPN tab.
+Страна	Country
+Страна изменена. Включите туннель снова	Country changed. Turn the tunnel on again
+Приложения	Apps
+Какие приложения идут через VPN. Действует и для обычного VPN, и для WDTT	Which apps go through VPN. Applies to both regular VPN and WDTT
+Все приложения через VPN	All apps through VPN
+Все, кроме выбранных	All except selected
+Только выбранные	Only selected
+Выберите хотя бы одно приложение — пока все идут через VPN	Select at least one app — for now all go through VPN
+Переподключите VPN, чтобы изменения заработали	Reconnect VPN to apply changes
+Поиск	Search
+Показывать системные	Show system apps
+выбрано: %s	selected: %s
+Настройки	Settings
+Язык	Language
+Язык приложения	App language
+Как в системе	System default
+Аккаунт	Account
+Устройства	Devices
+%s из %s	%s of %s
+Сервер	Server
+Выйти из аккаунта	Sign out
+Журнал аварийного туннеля	Emergency tunnel log
+Последний сбой	Last crash
+Отчёт скопирован	Report copied
+Скопировать	Copy
+Удалить	Delete
+О приложении	About
+Версия	Version
+Ядро	Core
+Лицензия	License
+Основано на WDTT (amurcanov/proxy-turn-vk-android) и Xray-core.	Based on WDTT (amurcanov/proxy-turn-vk-android) and Xray-core.
+Исходный код	Source code
+Бот @lite404bot	Bot @lite404bot
+Выйти из аккаунта?	Sign out?
+VPN отключится, данные подписки удалятся с телефона. Чтобы войти снова, понадобится токен из бота.	VPN will disconnect and subscription data will be removed from the phone. To sign in again you will need a token from the bot.
+Выйти	Sign out
+Отмена	Cancel
+Журнал WDTT	WDTT log
+Очистить	Clear
+Пусто	Empty
+Б	B
+КБ	KB
+МБ	MB
+ГБ	GB
+ТБ	TB
+/с	/s
+Сервер %s	Server %s
+сертификат сервера не совпадает с токеном	server certificate does not match the token
+Токен не подходит. Возьмите новый в боте @lite404bot	Token is not valid. Get a new one in the bot @lite404bot
+Слишком часто. Попробуйте через минуту	Too often. Try again in a minute
+Сервер ответил %s	Server responded %s
+Достигнут лимит устройств. Удалите ненужное устройство в боте	Device limit reached. Remove an unused device in the bot
+Подписка закончилась или выключена. Продлите её в боте	Subscription expired or disabled. Renew it in the bot
+На сервере выключена JSON-подписка (админу: wdtt doctor)	JSON subscription is disabled on the server (for admin: wdtt doctor)
+Сервер прислал непонятную подписку	Server sent an unreadable subscription
+Ошибка подписки: %s	Subscription error: %s
+Запуск...	Starting...
+Восстановление соединения...	Restoring connection...
+Подключение...	Connecting...
+Ожидание сети (Фоновый сон)	Waiting for network (sleep)
+Туннель активен	Tunnel active
+WDTT Туннель	WDTT Tunnel
+Уведомление о работе туннеля	Tunnel status notification
+Отключить	Disconnect
+VPN включён	VPN on
+выбранные приложения не установлены — измените список на вкладке «Приложения»	selected apps are not installed — change the list on the «Apps» tab
+нет разрешения на VPN	no VPN permission
+Система не дала запустить туннель. Откройте приложение и попробуйте снова	The system did not allow the tunnel to start. Open the app and try again

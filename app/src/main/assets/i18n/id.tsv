@@ -1,0 +1,98 @@
+Ошибка сервера	Kesalahan server
+Нет связи с сервером: %s	Tidak ada koneksi ke server: %s
+Это не токен Lite 404. Он начинается с L404-	Ini bukan token Lite 404. Token diawali L404-
+Лимит устройств	Batas perangkat
+На вашей подписке уже подключено максимум устройств. Откройте бота → «Устройства» и удалите ненужное, затем нажмите «Обновить подписку».	Langganan Anda sudah mencapai jumlah perangkat maksimal. Buka bot → «Perangkat», hapus yang tidak perlu, lalu ketuk «Perbarui langganan».
+Открыть бота	Buka bot
+Закрыть	Tutup
+Введите токен из бота	Masukkan token dari bot
+Вставить	Tempel
+Войти	Masuk
+Токен выдаёт бот @lite404bot	Token diberikan oleh bot @lite404bot
+время	waktu
+Не удалось подготовить конфиг: %s	Gagal menyiapkan konfigurasi: %s
+время подключения	waktu terhubung
+Нет серверов. Нажмите «Обновить подписку»	Tidak ada server. Ketuk «Perbarui langganan»
+Ошибка: 	Kesalahan: 
+Трафик	Trafik
+Подписка обновлена	Langganan diperbarui
+Обновить подписку	Perbarui langganan
+Серверы	Server
+Нет серверов	Tidak ada server
+Подписка выключена	Langganan dinonaktifkan
+Подписка бессрочная	Langganan tanpa batas waktu
+Осталось %s · до %s	Sisa hari: %s · sampai %s
+Не удалось включить WDTT	Gagal menyalakan WDTT
+Аварийный туннель VK	Terowongan darurat VK
+Когда обычный VPN не работает — трафик идёт через звонки VK	Saat VPN biasa tidak berfungsi, trafik lewat panggilan VK
+Добавьте хеш VK в боте	Tambahkan hash VK di bot
+Для вас нет серверов WDTT	Tidak ada server WDTT untuk Anda
+Хеш VK не задан. Добавьте его в боте и нажмите «Обновить подписку» на вкладке VPN.	Hash VK belum diatur. Tambahkan di bot lalu ketuk «Perbarui langganan» di tab VPN.
+Страна	Negara
+Страна изменена. Включите туннель снова	Negara diubah. Nyalakan terowongan lagi
+Приложения	Aplikasi
+Какие приложения идут через VPN. Действует и для обычного VPN, и для WDTT	Aplikasi mana yang lewat VPN. Berlaku untuk VPN biasa dan WDTT
+Все приложения через VPN	Semua aplikasi lewat VPN
+Все, кроме выбранных	Semua kecuali yang dipilih
+Только выбранные	Hanya yang dipilih
+Выберите хотя бы одно приложение — пока все идут через VPN	Pilih setidaknya satu aplikasi — untuk sementara semua lewat VPN
+Переподключите VPN, чтобы изменения заработали	Sambungkan ulang VPN agar perubahan berlaku
+Поиск	Cari
+Показывать системные	Tampilkan aplikasi sistem
+выбрано: %s	dipilih: %s
+Настройки	Pengaturan
+Язык	Bahasa
+Язык приложения	Bahasa aplikasi
+Как в системе	Ikuti sistem
+Аккаунт	Akun
+Устройства	Perangkat
+%s из %s	%s dari %s
+Сервер	Server
+Выйти из аккаунта	Keluar dari akun
+Журнал аварийного туннеля	Log terowongan darurat
+Последний сбой	Crash terakhir
+Отчёт скопирован	Laporan disalin
+Скопировать	Salin
+Удалить	Hapus
+О приложении	Tentang
+Версия	Versi
+Ядро	Inti
+Лицензия	Lisensi
+Основано на WDTT (amurcanov/proxy-turn-vk-android) и Xray-core.	Berdasarkan WDTT (amurcanov/proxy-turn-vk-android) dan Xray-core.
+Исходный код	Kode sumber
+Бот @lite404bot	Bot @lite404bot
+Выйти из аккаунта?	Keluar dari akun?
+VPN отключится, данные подписки удалятся с телефона. Чтобы войти снова, понадобится токен из бота.	VPN akan terputus dan data langganan dihapus dari ponsel. Untuk masuk lagi, Anda perlu token dari bot.
+Выйти	Keluar
+Отмена	Batal
+Журнал WDTT	Log WDTT
+Очистить	Bersihkan
+Пусто	Kosong
+Б	B
+КБ	KB
+МБ	MB
+ГБ	GB
+ТБ	TB
+/с	/d
+Сервер %s	Server %s
+сертификат сервера не совпадает с токеном	sertifikat server tidak cocok dengan token
+Токен не подходит. Возьмите новый в боте @lite404bot	Token tidak valid. Ambil yang baru di bot @lite404bot
+Слишком часто. Попробуйте через минуту	Terlalu sering. Coba lagi dalam satu menit
+Сервер ответил %s	Server menjawab %s
+Достигнут лимит устройств. Удалите ненужное устройство в боте	Batas perangkat tercapai. Hapus perangkat yang tidak dipakai di bot
+Подписка закончилась или выключена. Продлите её в боте	Langganan habis atau dinonaktifkan. Perpanjang di bot
+На сервере выключена JSON-подписка (админу: wdtt doctor)	Langganan JSON dinonaktifkan di server (untuk admin: wdtt doctor)
+Сервер прислал непонятную подписку	Server mengirim langganan yang tidak dapat dibaca
+Ошибка подписки: %s	Kesalahan langganan: %s
+Запуск...	Memulai...
+Восстановление соединения...	Memulihkan koneksi...
+Подключение...	Menghubungkan...
+Ожидание сети (Фоновый сон)	Menunggu jaringan (tidur latar)
+Туннель активен	Terowongan aktif
+WDTT Туннель	Terowongan WDTT
+Уведомление о работе туннеля	Notifikasi terowongan
+Отключить	Putuskan
+VPN включён	VPN aktif
+выбранные приложения не установлены — измените список на вкладке «Приложения»	aplikasi yang dipilih tidak terpasang — ubah daftar di tab «Aplikasi»
+нет разрешения на VPN	tidak ada izin VPN
+Система не дала запустить туннель. Откройте приложение и попробуйте снова	Sistem tidak mengizinkan terowongan dimulai. Buka aplikasi dan coba lagi

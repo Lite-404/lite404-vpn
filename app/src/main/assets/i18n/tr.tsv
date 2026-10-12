@@ -1,0 +1,98 @@
+Ошибка сервера	Sunucu hatası
+Нет связи с сервером: %s	Sunucuya bağlantı yok: %s
+Это не токен Lite 404. Он начинается с L404-	Bu bir Lite 404 token’ı değil. L404- ile başlar
+Лимит устройств	Cihaz sınırı
+На вашей подписке уже подключено максимум устройств. Откройте бота → «Устройства» и удалите ненужное, затем нажмите «Обновить подписку».	Aboneliğinizde zaten en fazla cihaz bağlı. Botu açın → «Cihazlar» bölümünden gereksiz olanı silin, ardından «Aboneliği yenile»ye dokunun.
+Открыть бота	Botu aç
+Закрыть	Kapat
+Введите токен из бота	Bottan aldığınız token’ı girin
+Вставить	Yapıştır
+Войти	Giriş yap
+Токен выдаёт бот @lite404bot	Token’ı @lite404bot verir
+время	süre
+Не удалось подготовить конфиг: %s	Yapılandırma hazırlanamadı: %s
+время подключения	bağlantı süresi
+Нет серверов. Нажмите «Обновить подписку»	Sunucu yok. «Aboneliği yenile»ye dokunun
+Ошибка: 	Hata: 
+Трафик	Trafik
+Подписка обновлена	Abonelik güncellendi
+Обновить подписку	Aboneliği yenile
+Серверы	Sunucular
+Нет серверов	Sunucu yok
+Подписка выключена	Abonelik kapalı
+Подписка бессрочная	Abonelik süresiz
+Осталось %s · до %s	Kalan gün: %s · %s tarihine kadar
+Не удалось включить WDTT	WDTT açılamadı
+Аварийный туннель VK	VK acil durum tüneli
+Когда обычный VPN не работает — трафик идёт через звонки VK	Normal VPN çalışmadığında trafik VK aramaları üzerinden geçer
+Добавьте хеш VK в боте	Botta VK hash’inizi ekleyin
+Для вас нет серверов WDTT	Sizin için WDTT sunucusu yok
+Хеш VK не задан. Добавьте его в боте и нажмите «Обновить подписку» на вкладке VPN.	VK hash’i ayarlanmamış. Botta ekleyin ve VPN sekmesinde «Aboneliği yenile»ye dokunun.
+Страна	Ülke
+Страна изменена. Включите туннель снова	Ülke değişti. Tüneli yeniden açın
+Приложения	Uygulamalar
+Какие приложения идут через VPN. Действует и для обычного VPN, и для WDTT	Hangi uygulamalar VPN’den geçer. Hem normal VPN hem WDTT için geçerlidir
+Все приложения через VPN	Tüm uygulamalar VPN’den
+Все, кроме выбранных	Seçilenler hariç hepsi
+Только выбранные	Yalnızca seçilenler
+Выберите хотя бы одно приложение — пока все идут через VPN	En az bir uygulama seçin — şimdilik hepsi VPN’den geçiyor
+Переподключите VPN, чтобы изменения заработали	Değişikliklerin geçerli olması için VPN’i yeniden bağlayın
+Поиск	Ara
+Показывать системные	Sistem uygulamalarını göster
+выбрано: %s	seçili: %s
+Настройки	Ayarlar
+Язык	Dil
+Язык приложения	Uygulama dili
+Как в системе	Sistem varsayılanı
+Аккаунт	Hesap
+Устройства	Cihazlar
+%s из %s	%s / %s
+Сервер	Sunucu
+Выйти из аккаунта	Hesaptan çık
+Журнал аварийного туннеля	Acil durum tüneli günlüğü
+Последний сбой	Son çökme
+Отчёт скопирован	Rapor kopyalandı
+Скопировать	Kopyala
+Удалить	Sil
+О приложении	Hakkında
+Версия	Sürüm
+Ядро	Çekirdek
+Лицензия	Lisans
+Основано на WDTT (amurcanov/proxy-turn-vk-android) и Xray-core.	WDTT (amurcanov/proxy-turn-vk-android) ve Xray-core tabanlıdır.
+Исходный код	Kaynak kodu
+Бот @lite404bot	Bot @lite404bot
+Выйти из аккаунта?	Hesaptan çıkılsın mı?
+VPN отключится, данные подписки удалятся с телефона. Чтобы войти снова, понадобится токен из бота.	VPN kapanacak ve abonelik verileri telefondan silinecek. Tekrar giriş için bottan token gerekecek.
+Выйти	Çık
+Отмена	İptal
+Журнал WDTT	WDTT günlüğü
+Очистить	Temizle
+Пусто	Boş
+Б	B
+КБ	KB
+МБ	MB
+ГБ	GB
+ТБ	TB
+/с	/sn
+Сервер %s	Sunucu %s
+сертификат сервера не совпадает с токеном	sunucu sertifikası token ile eşleşmiyor
+Токен не подходит. Возьмите новый в боте @lite404bot	Token geçersiz. @lite404bot botundan yenisini alın
+Слишком часто. Попробуйте через минуту	Çok sık. Bir dakika sonra tekrar deneyin
+Сервер ответил %s	Sunucu yanıtı: %s
+Достигнут лимит устройств. Удалите ненужное устройство в боте	Cihaz sınırına ulaşıldı. Botta kullanılmayan bir cihazı silin
+Подписка закончилась или выключена. Продлите её в боте	Abonelik sona erdi veya kapatıldı. Botta yenileyin
+На сервере выключена JSON-подписка (админу: wdtt doctor)	Sunucuda JSON aboneliği kapalı (yönetici için: wdtt doctor)
+Сервер прислал непонятную подписку	Sunucu anlaşılmayan bir abonelik gönderdi
+Ошибка подписки: %s	Abonelik hatası: %s
+Запуск...	Başlatılıyor...
+Восстановление соединения...	Bağlantı geri yükleniyor...
+Подключение...	Bağlanıyor...
+Ожидание сети (Фоновый сон)	Ağ bekleniyor (arka plan uykusu)
+Туннель активен	Tünel etkin
+WDTT Туннель	WDTT Tüneli
+Уведомление о работе туннеля	Tünel çalışma bildirimi
+Отключить	Bağlantıyı kes
+VPN включён	VPN açık
+выбранные приложения не установлены — измените список на вкладке «Приложения»	seçilen uygulamalar yüklü değil — «Uygulamalar» sekmesinde listeyi değiştirin
+нет разрешения на VPN	VPN izni yok
+Система не дала запустить туннель. Откройте приложение и попробуйте снова	Sistem tünelin başlatılmasına izin vermedi. Uygulamayı açıp tekrar deneyin
