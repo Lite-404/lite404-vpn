@@ -427,7 +427,11 @@ private fun VpnTab(model: AppModel, live: LiveState) {
         val conf = runCatching { XrayConfig.build(s.config) }.getOrElse { model.notify(tr("Не удалось подготовить конфиг: %s", it.message), ToastKind.Error); return }
         live.xray = "connecting"
         scope.launch {
-            WdttController.stopAndWait(ctx) // сначала полностью выключаем WDTT, иначе туннели мешают друг другу
+            // сначала полностью выключаем WDTT, иначе туннели мешают друг другу
+            if (TunnelManager.running.value) {
+                WdttController.stopAndWait(ctx)
+                kotlinx.coroutines.delay(1200)
+            }
             XrayVpnService.start(ctx, conf, s.name)
         }
     }
@@ -567,7 +571,12 @@ private fun WdttTab(model: AppModel, live: LiveState) {
         starting = true
         scope.launch {
             try {
-                XrayVpnService.stopAndWait(ctx) // сначала полностью выключаем обычный VPN
+                // сначала полностью выключаем обычный VPN и даём системе освободить его
+                val xrayWasOn = XrayVpnService.state(ctx).let { it == "running" || it == "connecting" }
+                if (xrayWasOn) {
+                    XrayVpnService.stopAndWait(ctx)
+                    kotlinx.coroutines.delay(1200)
+                }
                 WdttController.start(ctx, s, hash)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e

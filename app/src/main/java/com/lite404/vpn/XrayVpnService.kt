@@ -52,8 +52,8 @@ class XrayVpnService : VpnService() {
         suspend fun stopAndWait(ctx: Context) {
             if (state(ctx).let { it != "running" && it != "connecting" }) return
             stop(ctx)
-            repeat(40) {
-                if (state(ctx).let { it != "running" && it != "connecting" }) return
+            repeat(60) {
+                if (state(ctx).let { it != "running" && it != "connecting" } && !isAlive(ctx)) return
                 kotlinx.coroutines.delay(100)
             }
         }
@@ -86,12 +86,16 @@ class XrayVpnService : VpnService() {
     private var tun: ParcelFileDescriptor? = null
     private var controller: CoreController? = null
     @Volatile private var stopping = false
+    @Volatile private var stopped = false
+    private val lock = Any()
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> { stopVpn(); return START_NOT_STICKY }
             ACTION_START -> {
                 val name = intent.getStringExtra(EXTRA_NAME) ?: ""
+                stopped = false
                 foreground(name)
                 val mode = intent.getStringExtra(EXTRA_APPS_MODE) ?: "off"
                 val apps = intent.getStringArrayExtra(EXTRA_APPS)?.toList() ?: emptyList()
@@ -126,8 +130,8 @@ class XrayVpnService : VpnService() {
         else startForeground(NOTIF_ID, n)
     }
 
-    @Synchronized
-    private fun startVpn(appsMode: String, apps: List<String>) {
+    private fun startVpn(appsMode: String, apps: List<String>) = synchronized(lock) {
+        if (stopped) return@synchronized
         try {
             stopping = true
             cleanup()
@@ -162,13 +166,12 @@ class XrayVpnService : VpnService() {
             })
             controller = c
             c.startLoop(config, fd.fd)
-            writeState(this, "running")
+            if (!stopped) writeState(this, "running")
         } catch (e: Throwable) {
             Log.e(TAG, "start failed", e)
             writeState(this, "error:" + (e.message ?: e.javaClass.simpleName))
             cleanup()
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            stopSelf()
+            main.post { stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
         }
     }
 
@@ -193,18 +196,25 @@ class XrayVpnService : VpnService() {
         tun = null
     }
 
+    /** Остановка один раз, ядро гасится в фоне под тем же замком, что и запуск. */
     private fun stopVpn() {
+        if (stopped) return
+        stopped = true
         stopping = true
-        cleanup()
-        writeState(this, "stopped")
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
+        Thread {
+            synchronized(lock) { runCatching { cleanup() } }
+            writeState(this, "stopped")
+            main.post { stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
+        }.start()
     }
 
     override fun onRevoke() { stopVpn() }
 
     override fun onDestroy() {
-        if (!stopping) { cleanup(); writeState(this, "stopped") }
+        if (!stopping) { stopping = true; runCatching { synchronized(lock) { cleanup() } } }
+        writeState(this, "stopped")
         super.onDestroy()
+        // процесс «:xray» нужен только ядру — завершаем его целиком, чтобы ядро и VPN точно освободились
+        main.postDelayed({ android.os.Process.killProcess(android.os.Process.myPid()) }, 300)
     }
 }
