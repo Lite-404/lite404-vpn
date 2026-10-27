@@ -64,12 +64,8 @@ func WorkerGroup(
 	log.Printf("[ГРУППА #%d] Запрос кредов (хеш: %s...)", groupID, shortHash)
 
 	credStreamID := groupID * 100
-	user, pass, turnURLs, err := GetCreds(ctx, hash, credStreamID)
-	var creds *Credentials
-	if err == nil {
-		creds = &Credentials{User: user, Pass: pass, TurnURLs: turnURLs, CacheStreamID: credStreamID}
-	} else {
-		log.Printf("[ГРУППА #%d] Ошибка кредов: %v", groupID, err)
+	creds, ok := getGroupCreds(ctx, groupID, hash, credStreamID)
+	if !ok {
 		return
 	}
 
@@ -234,6 +230,39 @@ func WorkerGroup(
 
 	wg.Wait()
 	log.Printf("[ГРУППА #%d] Все воркеры группы завершились.", groupID)
+}
+
+// getGroupCreds получает TURN-креды VK для группы и НЕ сдаётся после первой неудачи.
+//
+// Раньше группа при ошибке кредов просто завершалась навсегда. Каждая группа (9 потоков) берёт свои
+// креды, и при быстром переподключении VK часто отвечает капчей/flood control на 2-й и 3-й запрос —
+// группы 2 и 3 умирали (а 3-я ждёт сигнала от 2-й и даже не начинала), поэтому оставалось ровно 9 потоков.
+// Теперь временные ошибки повторяются с нарастающей паузой; фатальна только недоступность звонка (мёртвый хеш).
+func getGroupCreds(ctx context.Context, groupID int, hash string, credStreamID int) (*Credentials, bool) {
+	for attempt := 1; ; attempt++ {
+		user, pass, turnURLs, err := GetCreds(ctx, hash, credStreamID)
+		if err == nil {
+			return &Credentials{User: user, Pass: pass, TurnURLs: turnURLs, CacheStreamID: credStreamID}, true
+		}
+		if ctx.Err() != nil {
+			return nil, false
+		}
+		if _, dead := asCallUnavailableError(err); dead {
+			log.Printf("[ГРУППА #%d] Ошибка кредов: %v — звонок недоступен, группа остановлена", groupID, err)
+			return nil, false
+		}
+		delay := time.Duration(10*attempt+rand.Intn(10)) * time.Second
+		if delay > 2*time.Minute {
+			delay = 2*time.Minute + time.Duration(rand.Intn(30))*time.Second
+		}
+		log.Printf("[ГРУППА #%d] Ошибка кредов (попытка %d): %v — повтор через %d с", groupID, attempt, err, int(delay.Seconds()))
+		getStreamCache(credStreamID).invalidate(credStreamID)
+		select {
+		case <-time.After(delay):
+		case <-ctx.Done():
+			return nil, false
+		}
+	}
 }
 
 func ParseHashes(raw string) []string {
