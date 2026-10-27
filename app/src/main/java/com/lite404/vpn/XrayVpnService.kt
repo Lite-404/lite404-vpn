@@ -155,6 +155,7 @@ class XrayVpnService : VpnService() {
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
+            if (isVpnNetwork(network)) return   // наш же туннель — не «смена сети»
             bg.removeCallbacks(lossTask)
             val previous = lastNetwork
             currentNetwork = network
@@ -169,7 +170,7 @@ class XrayVpnService : VpnService() {
         }
 
         override fun onLost(network: Network) {
-            if (network != currentNetwork) return
+            if (network != currentNetwork) return   // VPN-сети сюда не попадают: currentNetwork всегда не VPN
             currentNetwork = null
             bg.postDelayed(lossTask, NETWORK_LOSS_GRACE_MS)
         }
@@ -341,6 +342,9 @@ class XrayVpnService : VpnService() {
         }
         writeTest(this, "fail:$last")
     }
+
+    private fun isVpnNetwork(network: Network): Boolean =
+        connectivity?.getNetworkCapabilities(network)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
 
     private fun watchNetwork() {
         if (connectivity != null) return

@@ -13,8 +13,8 @@ android {
         applicationId = "com.lite404.vpn"
         minSdk = 28
         targetSdk = 35
-        versionCode = 14
-        versionName = "0.6.2.3"
+        versionCode = 15
+        versionName = "0.6.2.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

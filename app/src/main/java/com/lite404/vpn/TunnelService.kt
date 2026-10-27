@@ -30,6 +30,10 @@ private const val TUNNEL_NOTIFICATION_ID = 1
 private const val NETWORK_SETTLE_MS = 2_000L
 private const val RECOVERY_CHECK_MS = 25_000L
 private const val LONG_LOSS_MS = 45_000L
+private const val MIN_NETWORK_RESTART_GAP_MS = 60_000L
+
+private fun isVpn(cm: ConnectivityManager, network: Network): Boolean =
+    cm.getNetworkCapabilities(network)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
 
 class TunnelService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
@@ -45,6 +49,7 @@ class TunnelService : Service() {
     private var lostNetwork: Network? = null
     /** Последняя известная сеть (не сбрасывается при потере): отличает «та же вернулась» от «сменилась». */
     private var lastNetwork: Network? = null
+    private var lastNetworkRestartAt = 0L
     private var networkJob: Job? = null
     private var isTunnelPaused = false
 
@@ -193,11 +198,15 @@ class TunnelService : Service() {
         }
         lastNetwork = currentNetwork
         val callback = object : ConnectivityManager.NetworkCallback() {
+            // Сети VPN (в том числе наш же WireGuard) игнорируем — как NOT_VPN в официальном WDTT.
+            // Иначе подъём туннеля выглядит как «смена сети» → перезапуск клиента → снова туннель → по кругу.
             override fun onAvailable(network: Network) {
+                if (isVpn(cm, network)) return
                 TunnelManager.scope.launch(Dispatchers.Main) { onNetworkAvailable(network) }
             }
 
             override fun onLost(network: Network) {
+                if (isVpn(cm, network)) return
                 TunnelManager.scope.launch(Dispatchers.Main) { onNetworkLost(network) }
             }
         }
@@ -234,6 +243,11 @@ class TunnelService : Service() {
         networkJob = TunnelManager.scope.launch(Dispatchers.Main) {
             if (previous != network) {
                 delay(NETWORK_SETTLE_MS)
+                if (System.currentTimeMillis() - lastNetworkRestartAt < MIN_NETWORK_RESTART_GAP_MS) {
+                    Log.d("TunnelService", "Сеть сменилась, но транспорт перезапускался меньше минуты назад — не трогаем")
+                    return@launch
+                }
+                lastNetworkRestartAt = System.currentTimeMillis()
                 Log.d("TunnelService", "Сеть сменилась — мягкий перезапуск транспорта")
                 TunnelManager.restartTransport()
             } else {
