@@ -48,6 +48,8 @@ object Connection {
     private var monitor: Job? = null
     private var wdttTestJob: Job? = null
     private var wdttTestedSession = false
+    private var wdttZeroSince = 0L
+    private const val WDTT_FLAP_MS = 8_000L
 
     /** Запустить слежение за службами (вызывается экраном; повторный вызов ничего не делает). */
     fun attach(ctx: Context) {
@@ -143,10 +145,18 @@ object Connection {
         val wdttStarting = TunnelManager.starting.value
         val workers = TunnelManager.activeWorkers.value
         val prev = _state.value
+        // Туннель был подключён, а потоки на миг пропали (переподключается поток, сменился TURN) —
+        // кнопку не перекрашиваем в «подключение», пока потоков нет меньше WDTT_FLAP_MS.
+        val now = System.currentTimeMillis()
+        if (workers > 0 || !(wdttRunning || wdttStarting)) wdttZeroSince = 0L
+        else if (wdttZeroSince == 0L) wdttZeroSince = now
+        val wdttBlip = prev.mode == VpnMode.WDTT && prev.phase == Phase.ON &&
+            wdttZeroSince != 0L && now - wdttZeroSince < WDTT_FLAP_MS
         val next = when {
             xray == "running" -> ConnState(VpnMode.XRAY, Phase.ON, test = xrayTest(app))
             xray == "connecting" -> ConnState(VpnMode.XRAY, Phase.CONNECTING)
             wdttRunning && workers > 0 -> ConnState(VpnMode.WDTT, Phase.ON, test = prev.test.takeIf { prev.mode == VpnMode.WDTT })
+            wdttBlip -> prev
             wdttRunning || wdttStarting || TunnelManager.paused.value -> ConnState(VpnMode.WDTT, Phase.CONNECTING, test = prev.test.takeIf { prev.mode == VpnMode.WDTT })
             xray.startsWith("error:") -> ConnState(error = xray.removePrefix("error:"))
             // WDTT сам остановился (не по кнопке) — показываем причину из журнала туннеля

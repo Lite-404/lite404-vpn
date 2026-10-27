@@ -28,7 +28,7 @@ import kotlinx.coroutines.launch
 private const val TUNNEL_NOTIFICATION_CHANNEL_ID = "wdtt_tunnel_v4"
 private const val TUNNEL_NOTIFICATION_ID = 1
 private const val NETWORK_SETTLE_MS = 2_000L
-private const val RECOVERY_CHECK_MS = 8_000L
+private const val RECOVERY_CHECK_MS = 25_000L
 private const val LONG_LOSS_MS = 45_000L
 
 class TunnelService : Service() {
@@ -43,6 +43,8 @@ class TunnelService : Service() {
     // Сеть, через которую сейчас идёт туннель (Wi-Fi или мобильная); null — пропала
     private var currentNetwork: Network? = null
     private var lostNetwork: Network? = null
+    /** Последняя известная сеть (не сбрасывается при потере): отличает «та же вернулась» от «сменилась». */
+    private var lastNetwork: Network? = null
     private var networkJob: Job? = null
     private var isTunnelPaused = false
 
@@ -189,6 +191,7 @@ class TunnelService : Service() {
         currentNetwork = cm.activeNetwork?.takeIf {
             cm.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == false
         }
+        lastNetwork = currentNetwork
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
                 TunnelManager.scope.launch(Dispatchers.Main) { onNetworkAvailable(network) }
@@ -207,19 +210,27 @@ class TunnelService : Service() {
     }
 
     private fun onNetworkAvailable(network: Network) {
-        networkJob?.cancel()
-        val previous = currentNetwork ?: lostNetwork
+        val wasLost = lostNetwork != null
+        val previous = lastNetwork
         currentNetwork = network
+        lastNetwork = network
         lostNetwork = null
         TunnelManager.networkAvailable = true
         if (isTunnelPaused) {
+            networkJob?.cancel()
             isTunnelPaused = false
             Log.d("TunnelService", "Сеть вернулась после долгой паузы — поднимаем туннель")
             TunnelManager.resume()
             updateNotification(tr("Подключение..."))
             return
         }
-        if (!TunnelManager.running.value || previous == null) return
+        // Android присылает onAvailable сразу после подписки и при любых мелочах той же сети.
+        // Перезапуск Go-клиента — дорогой (новые креды VK; старые потоки ещё висят на сервере и
+        // вместе с новыми упираются в лимит), поэтому трогаем транспорт только при реальной смене
+        // сети или если после настоящей потери сети потоки так и не ожили.
+        if (previous == null || (previous == network && !wasLost)) return
+        if (!TunnelManager.running.value) return
+        networkJob?.cancel()
         networkJob = TunnelManager.scope.launch(Dispatchers.Main) {
             if (previous != network) {
                 delay(NETWORK_SETTLE_MS)
@@ -227,7 +238,9 @@ class TunnelService : Service() {
                 TunnelManager.restartTransport()
             } else {
                 delay(RECOVERY_CHECK_MS)
-                if (TunnelManager.running.value && TunnelManager.activeWorkers.value == 0) {
+                if (TunnelManager.running.value && TunnelManager.activeWorkers.value == 0 &&
+                    !ManlCaptchaWebViewManager.isCaptchaPending
+                ) {
                     Log.d("TunnelService", "Потоки не ожили после возврата сети — перезапуск транспорта")
                     TunnelManager.restartTransport()
                 }
