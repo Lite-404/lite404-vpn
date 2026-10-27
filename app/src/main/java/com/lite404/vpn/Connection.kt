@@ -149,6 +149,9 @@ object Connection {
             wdttRunning && workers > 0 -> ConnState(VpnMode.WDTT, Phase.ON, test = prev.test.takeIf { prev.mode == VpnMode.WDTT })
             wdttRunning || wdttStarting || TunnelManager.paused.value -> ConnState(VpnMode.WDTT, Phase.CONNECTING, test = prev.test.takeIf { prev.mode == VpnMode.WDTT })
             xray.startsWith("error:") -> ConnState(error = xray.removePrefix("error:"))
+            // WDTT сам остановился (не по кнопке) — показываем причину из журнала туннеля
+            prev.mode == VpnMode.WDTT && prev.phase != Phase.OFF && prev.phase != Phase.STOPPING ->
+                ConnState(error = lastWdttError() ?: tr("Туннель WDTT остановился. Подробности — в журнале (Настройки)"))
             else -> ConnState(error = prev.error.takeIf { prev.phase == Phase.OFF })
         }
         _state.value = next
@@ -158,6 +161,10 @@ object Connection {
         }
         if (next.phase == Phase.OFF) wdttTestedSession = false
     }
+
+    private fun lastWdttError(): String? =
+        TunnelManager.logs.value.filter { it.isError }.minByOrNull { it.priority }?.message
+            ?.replace(Regex("""^\[[^]]+]\s*"""), "")?.removePrefix("Ошибка: ")?.take(160)
 
     private fun xrayTest(app: Context): LinkTest? {
         val r = XrayVpnService.testResult(app)

@@ -120,3 +120,4 @@ Android может усыплять VPN при выключенном экран
 Чтобы VPN не «засыпал» при выключенном экране и быстро работал после разблокировки, разрешите приложению работать без ограничений батареи.	To keep the VPN from sleeping while the screen is off and working right after unlocking, allow the app to run without battery restrictions.
 нет ответа	no response
 туннель не работает	tunnel is not running
+Туннель WDTT остановился. Подробности — в журнале (Настройки)	The WDTT tunnel stopped. Details are in the log (Settings)

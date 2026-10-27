@@ -1,18 +1,24 @@
 package com.lite404.vpn
 
 import android.content.Context
+import android.content.Intent
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import libv2ray.Libv2ray
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
+import java.util.UUID
 
-/** Общее для ядра Xray: geo-файлы и замер задержки (пинг) без подключения. */
+/**
+ * Общее для ядра Xray: geo-файлы и пинг.
+ *
+ * ВАЖНО: функции, которые вызывают Libv2ray (initEnv), можно использовать только в процессах «:xray» и «:ping».
+ * В основном процессе работает WireGuard (тоже Go) — вторая среда Go в том же процессе роняет приложение.
+ */
 object XrayCore {
+    const val VERSION_FILE = "xray_version"
     @Volatile private var envReady = false
 
     /** geoip.dat / geosite.dat из ядра → в папку приложения (Xray читает их оттуда для правил маршрутизации). */
@@ -29,31 +35,40 @@ object XrayCore {
         return dir
     }
 
+    /** Только для процессов «:xray» и «:ping». */
     fun initEnv(ctx: Context) {
         if (envReady) return
         synchronized(this) {
             if (!envReady) {
                 Libv2ray.initCoreEnv(geoDir(ctx).absolutePath, "")
                 envReady = true
+                // версию ядра показывает экран настроек (сам он ядро загружать не может)
+                runCatching { File(ctx.filesDir, VERSION_FILE).writeText(Libv2ray.checkVersionX()) }
             }
         }
     }
 
     /**
-     * Задержка до сервера: полный запрос [url] через этот сервер (рукопожатие REALITY + HTTP), мс.
-     * Приложение само исключено из VPN, поэтому замер идёт напрямую к серверу и при включённом туннеле.
-     * -1 — сервер не ответил.
+     * Пинг всех серверов (полный запрос [url] через каждый сервер), мс; -1 — нет ответа.
+     * Замер делает служба в процессе «:ping»; здесь только ждём файл с результатом.
      */
-    suspend fun ping(ctx: Context, serverJson: String, url: String): Long = withContext(Dispatchers.IO) {
-        runCatching {
-            initEnv(ctx)
-            Libv2ray.measureOutboundDelay(XrayConfig.forPing(serverJson), url)
-        }.getOrDefault(-1L).let { if (it <= 0) -1L else it }
-    }
-
-    /** Пинг всех серверов параллельно (не больше 4 одновременно). Ключ — индекс сервера. */
-    suspend fun pingAll(ctx: Context, servers: List<XrayServer>, url: String): Map<Int, Long> = coroutineScope {
-        val gate = Semaphore(4)
-        servers.mapIndexed { i, s -> async { gate.withPermit { i to ping(ctx, s.config, url) } } }.awaitAll().toMap()
+    suspend fun pingAll(ctx: Context, servers: List<XrayServer>, url: String): Map<Int, Long> = withContext(Dispatchers.IO) {
+        if (servers.isEmpty()) return@withContext emptyMap()
+        val app = ctx.applicationContext
+        val id = UUID.randomUUID().toString().take(8)
+        val file = PingService.resultFile(app.filesDir, id)
+        val configs = JSONArray().apply { servers.forEach { put(it.config) } }
+        val started = runCatching {
+            app.startService(Intent(app, PingService::class.java)
+                .putExtra(PingService.EXTRA_CONFIGS, configs.toString())
+                .putExtra(PingService.EXTRA_URL, url)
+                .putExtra(PingService.EXTRA_ID, id))
+        }.isSuccess
+        if (!started) return@withContext servers.indices.associateWith { -1L }
+        val end = System.currentTimeMillis() + 30_000
+        while (!file.exists() && System.currentTimeMillis() < end) delay(200)
+        val json = runCatching { JSONObject(file.readText()) }.getOrNull()
+        file.delete()
+        servers.indices.associateWith { i -> json?.optLong(i.toString(), -1L) ?: -1L }
     }
 }

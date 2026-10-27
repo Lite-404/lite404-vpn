@@ -59,6 +59,12 @@
                 android:value="vpn" />
         </service>
 
+        <!-- пинг серверов: ядро Xray (Go) нельзя грузить в основной процесс, где работает WireGuard (тоже Go) -->
+        <service
+            android:name=".PingService"
+            android:exported="false"
+            android:process=":ping" />
+
         <activity
             android:name=".ManlCaptchaActivity"
             android:theme="@android:style/Theme.Translucent.NoTitleBar"

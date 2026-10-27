@@ -141,6 +141,8 @@ class XrayVpnService : VpnService() {
 
     private var connectivity: ConnectivityManager? = null
     private var currentNetwork: Network? = null
+    /** Последняя известная сеть (не сбрасывается при потере) — чтобы отличить «та же вернулась» от «сменилась». */
+    private var lastNetwork: Network? = null
     private var networkLost = false
     private val rebuildTask = Runnable { rebuildForNetwork() }
     private val lossTask = Runnable {
@@ -154,12 +156,12 @@ class XrayVpnService : VpnService() {
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
             bg.removeCallbacks(lossTask)
-            val previous = currentNetwork
+            val previous = lastNetwork
             currentNetwork = network
+            lastNetwork = network
             runCatching { setUnderlyingNetworks(arrayOf(network)) }
-            // та же сеть вернулась без потери — соединения живы, ничего не трогаем
-            if (previous == network && !networkLost) return
-            if (previous == null && !networkLost) return   // первое уведомление сразу после подписки
+            if (previous == null) return                        // первое уведомление сразу после подписки
+            if (previous == network && !networkLost) return     // та же сеть, соединения живы — ничего не трогаем
             networkLost = false
             Log.d(TAG, "сеть сменилась — пересобираем туннель")
             bg.removeCallbacks(rebuildTask)
@@ -348,6 +350,7 @@ class XrayVpnService : VpnService() {
         currentNetwork = cm.activeNetwork?.takeIf {
             cm.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == false
         }
+        lastNetwork = currentNetwork
         runCatching { cm.registerDefaultNetworkCallback(networkCallback, bg) }
             .onFailure { Log.w(TAG, "не удалось следить за сетью", it) }
     }

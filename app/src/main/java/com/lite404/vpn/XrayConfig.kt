@@ -10,7 +10,8 @@ object XrayConfig {
     fun build(serverJson: String): String {
         val root = JSONObject(serverJson)
         root.remove("remarks")
-        root.put("log", JSONObject().put("loglevel", "warning"))
+        // журнал каждого соединения (access) на телефоне только тратит процессор и батарею
+        root.put("log", JSONObject().put("loglevel", "warning").put("access", "none"))
         // routeOnly=false: в соединение подставляется домен (из TLS/HTTP), и адрес резолвит сервер —
         // ближе к себе и только IPv4 (у нод нет IPv6). Так же работают Happ и v2rayNG.
         root.put("inbounds", JSONArray().put(JSONObject(

@@ -800,7 +800,10 @@ private fun SettingsTab(model: AppModel) {
     var confirmLogout by remember { mutableStateOf(false) }
     var chooseLang by remember { mutableStateOf(false) }
     val xrayVersion by produceState("…") {
-        value = withContext(Dispatchers.IO) { runCatching { libv2ray.Libv2ray.checkVersionX() }.getOrDefault("?") }
+        // не вызывать ядро здесь: в основном процессе уже работает WireGuard (Go), вторая среда Go роняет приложение
+        value = withContext(Dispatchers.IO) {
+            runCatching { java.io.File(ctx.filesDir, XrayCore.VERSION_FILE).readText().trim() }.getOrNull()?.ifBlank { null } ?: "—"
+        }
     }
     if (showLogs) { LogsScreen { showLogs = false }; return }
 
