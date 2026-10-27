@@ -35,6 +35,41 @@ class Prefs(ctx: Context) {
         get() = p.getStringSet("apps", emptySet())?.toSet() ?: emptySet()
         set(v) = p.edit().putStringSet("apps", v).apply()
 
+    /** Какой режим пользователь включил последним: "xray", "wdtt" или "" (выключено). Нужен, чтобы после
+     *  того как система убила процесс во сне, восстановить именно его и не мешать другому. */
+    var desiredMode: String
+        get() = p.getString("desired_mode", "") ?: ""
+        set(v) { p.edit().putString("desired_mode", v).commit() }
+
+    /** Адрес для пинга и проверки соединения (должен отвечать 204/200 без тела). */
+    var pingUrl: String
+        get() = p.getString("ping_url", DEFAULT_PING_URL)?.takeIf { it.startsWith("http") } ?: DEFAULT_PING_URL
+        set(v) = p.edit().putString("ping_url", v).apply()
+
+    /** Пинговать серверы автоматически при открытии вкладки. */
+    var pingOnOpen: Boolean
+        get() = p.getBoolean("ping_on_open", true)
+        set(v) = p.edit().putBoolean("ping_on_open", v).apply()
+
+    /** Проверять, что интернет через VPN работает, сразу после подключения. */
+    var testAfterConnect: Boolean
+        get() = p.getBoolean("test_after_connect", true)
+        set(v) = p.edit().putBoolean("test_after_connect", v).apply()
+
+    /** Предлагали ли уже снять ограничение батареи (чтобы не спрашивать каждый раз). */
+    var batteryAsked: Boolean
+        get() = p.getBoolean("battery_asked", false)
+        set(v) = p.edit().putBoolean("battery_asked", v).apply()
+
+    companion object {
+        const val DEFAULT_PING_URL = "https://www.gstatic.com/generate_204"
+        val PING_URLS = listOf(
+            DEFAULT_PING_URL,
+            "https://cp.cloudflare.com/generate_204",
+            "https://connectivitycheck.gstatic.com/generate_204",
+        )
+    }
+
     /** Режим, который реально применяется (include без выбранных приложений = всё через VPN). */
     fun effectiveAppsMode(): String = if (appsMode == "off" || apps.isEmpty()) "off" else appsMode
 

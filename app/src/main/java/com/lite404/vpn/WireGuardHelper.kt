@@ -154,6 +154,14 @@ class WireGuardHelper(context: Context) {
         isSharedTunnelUpLocked()
     }
 
+    /** Сколько мс назад было последнее рукопожатие WireGuard с сервером; null — ещё не было или туннель не поднят. */
+    suspend fun handshakeAgeMs(): Long? = wgMutex.withLock {
+        val current = sharedTunnel ?: return@withLock null
+        val stats = runCatching { backend.getStatistics(current) }.getOrNull() ?: return@withLock null
+        val last = stats.peers().maxOfOrNull { key -> stats.peer(key)?.latestHandshakeEpochMillis() ?: 0L } ?: 0L
+        if (last <= 0L) null else System.currentTimeMillis() - last
+    }
+
     suspend fun watchdogState(): WatchdogState = wgMutex.withLock {
         when {
             disabledByEmptyWhitelist -> WatchdogState.DISABLED_BY_EMPTY_WHITELIST

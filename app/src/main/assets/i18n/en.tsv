@@ -96,3 +96,27 @@ VPN включён	VPN on
 выбранные приложения не установлены — измените список на вкладке «Приложения»	selected apps are not installed — change the list on the «Apps» tab
 нет разрешения на VPN	no VPN permission
 Система не дала запустить туннель. Откройте приложение и попробуйте снова	The system did not allow the tunnel to start. Open the app and try again
+%s мс	%s ms
+Android может усыплять VPN при выключенном экране — после разблокировки он переподключается	Android may put the VPN to sleep while the screen is off — it reconnects after unlocking
+Адрес для проверки	Check address
+Интернет работает · %s мс	Internet works · %s ms
+Не сейчас	Not now
+Ограничение батареи снято — VPN не засыпает при выключенном экране	Battery restriction is off — the VPN does not sleep while the screen is off
+Пинг	Ping
+Пинг и проверка соединения	Ping and connection check
+Пинг — время полного запроса через сервер (подключение + ответ сайта), а не ICMP. Поэтому цифры выше, чем у обычного ping.	Ping is the time of a full request through the server (connect + site response), not ICMP, so it is higher than a plain ping.
+Пинговать серверы при открытии	Ping servers on open
+Проверить	Check
+Проверяем соединение…	Checking connection…
+Проверять интернет после подключения	Check internet after connecting
+Работа в фоне	Background work
+Разрешить	Allow
+Разрешить работу в фоне	Allow background work
+Сайты не открываются: %s	Sites do not open: %s
+Сейчас включён WDTT. Нажмите кнопку — переключимся на обычный VPN	WDTT is on now. Tap the button to switch to the regular VPN
+Сейчас включён обычный VPN. Нажмите кнопку — переключимся на WDTT	The regular VPN is on now. Tap the button to switch to WDTT
+Сервер не отвечает через туннель. Попробуйте другую страну	The server does not respond through the tunnel. Try another country
+Туннель работает · потоков %s	Tunnel works · %s streams
+Чтобы VPN не «засыпал» при выключенном экране и быстро работал после разблокировки, разрешите приложению работать без ограничений батареи.	To keep the VPN from sleeping while the screen is off and working right after unlocking, allow the app to run without battery restrictions.
+нет ответа	no response
+туннель не работает	tunnel is not running

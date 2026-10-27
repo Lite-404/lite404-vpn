@@ -11,7 +11,6 @@ import android.content.pm.ServiceInfo
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
-import android.net.NetworkRequest
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
@@ -28,6 +27,9 @@ import kotlinx.coroutines.launch
 
 private const val TUNNEL_NOTIFICATION_CHANNEL_ID = "wdtt_tunnel_v4"
 private const val TUNNEL_NOTIFICATION_ID = 1
+private const val NETWORK_SETTLE_MS = 2_000L
+private const val RECOVERY_CHECK_MS = 8_000L
+private const val LONG_LOSS_MS = 45_000L
 
 class TunnelService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
@@ -38,8 +40,10 @@ class TunnelService : Service() {
     
     private var connectivityManager: ConnectivityManager? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
-    private var lastNetworkChangeTime = 0L
-    private val activeNetworks = mutableSetOf<Network>()
+    // Сеть, через которую сейчас идёт туннель (Wi-Fi или мобильная); null — пропала
+    private var currentNetwork: Network? = null
+    private var lostNetwork: Network? = null
+    private var networkJob: Job? = null
     private var isTunnelPaused = false
 
     override fun onCreate() {
@@ -52,7 +56,18 @@ class TunnelService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent == null) {
-            // процесс перезапущен системой: туннель сам не поднимаем, чтобы не мешать обычному VPN
+            // Система убила процесс во сне и перезапустила службу. Как в оригинальном WDTT — поднимаем
+            // туннель снова, но только если пользователь не выключал WDTT и не переключился на обычный VPN.
+            // startForeground — первым делом: без него Android роняет приложение через несколько секунд.
+            val wanted = Prefs(this).desiredMode == "wdtt"
+            if (!startPersistentForeground(createNotification(tr("Восстановление соединения...")))) {
+                stopTunnel()
+                return START_NOT_STICKY
+            }
+            if (wanted) {
+                restoreTunnel()
+                return START_STICKY
+            }
             stopTunnel()
             return START_NOT_STICKY
         }
@@ -146,6 +161,9 @@ class TunnelService : Service() {
 
     private fun stopTunnel() {
         updateJob?.cancel()
+        networkJob?.cancel()
+        // остановлен по-настоящему — после перезапуска процесса системой не восстанавливать
+        Prefs(this).let { if (it.desiredMode == "wdtt") it.desiredMode = "" }
 
         
         CaptchaWebViewManager.onTunnelStop()
@@ -157,64 +175,80 @@ class TunnelService : Service() {
         stopSelf()
     }
 
+    /**
+     * Следим только за сетью по умолчанию (приложение исключено из VPN, поэтому это Wi-Fi или мобильная).
+     *  • Кратковременная пропажа сети (экран выключен, Wi-Fi уснул, смена вышки) — процесс НЕ трогаем:
+     *    потоки WDTT переподключаются сами, а полный перезапуск означал бы новые креды VK и капчу.
+     *  • Сети нет дольше [LONG_LOSS_MS] — приостанавливаем (экономим батарею), при возврате поднимаем заново.
+     *  • Сеть сменилась (Wi-Fi ↔ мобильная) — мягкий перезапуск транспорта, туннель WireGuard не трогаем.
+     *  • Та же сеть вернулась — через [RECOVERY_CHECK_MS] проверяем, ожили ли потоки; нет — перезапуск транспорта.
+     */
     private fun setupNetworkCallback() {
-        connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        activeNetworks.clear()
-        
-        networkCallback = object : ConnectivityManager.NetworkCallback() {
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        connectivityManager = cm
+        currentNetwork = cm.activeNetwork?.takeIf {
+            cm.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == false
+        }
+        val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
-                super.onAvailable(network)
-                val wasEmpty = activeNetworks.isEmpty()
-                activeNetworks.add(network)
-                if (wasEmpty) {
-                    if (isTunnelPaused) {
-                        isTunnelPaused = false
-                        Log.d("TunnelService", "Сеть появилась, возобновляем туннель")
-                        TunnelManager.resume()
-                        updateNotification(tr("Подключение..."))
-                    } else {
-                        handleNetworkChange()
-                    }
-                } else {
-                    handleNetworkChange()
-                }
+                TunnelManager.scope.launch(Dispatchers.Main) { onNetworkAvailable(network) }
             }
 
             override fun onLost(network: Network) {
-                super.onLost(network)
-                activeNetworks.remove(network)
-                if (activeNetworks.isEmpty() && TunnelManager.running.value && !isTunnelPaused) {
-                    isTunnelPaused = true
-                    Log.d("TunnelService", "Сеть потеряна, приостанавливаем туннель")
-                    TunnelManager.pause()
-                    updateNotification(tr("Ожидание сети (Фоновый сон)"))
+                TunnelManager.scope.launch(Dispatchers.Main) { onNetworkLost(network) }
+            }
+        }
+        try {
+            cm.registerDefaultNetworkCallback(callback)
+            networkCallback = callback
+        } catch (e: Exception) {
+            Log.e("TunnelService", "Не удалось подписаться на смену сети", e)
+        }
+    }
+
+    private fun onNetworkAvailable(network: Network) {
+        networkJob?.cancel()
+        val previous = currentNetwork ?: lostNetwork
+        currentNetwork = network
+        lostNetwork = null
+        TunnelManager.networkAvailable = true
+        if (isTunnelPaused) {
+            isTunnelPaused = false
+            Log.d("TunnelService", "Сеть вернулась после долгой паузы — поднимаем туннель")
+            TunnelManager.resume()
+            updateNotification(tr("Подключение..."))
+            return
+        }
+        if (!TunnelManager.running.value || previous == null) return
+        networkJob = TunnelManager.scope.launch(Dispatchers.Main) {
+            if (previous != network) {
+                delay(NETWORK_SETTLE_MS)
+                Log.d("TunnelService", "Сеть сменилась — мягкий перезапуск транспорта")
+                TunnelManager.restartTransport()
+            } else {
+                delay(RECOVERY_CHECK_MS)
+                if (TunnelManager.running.value && TunnelManager.activeWorkers.value == 0) {
+                    Log.d("TunnelService", "Потоки не ожили после возврата сети — перезапуск транспорта")
+                    TunnelManager.restartTransport()
                 }
             }
         }
-
-        
-        
-        val request = NetworkRequest.Builder()
-            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-            .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
-            .build()
-            
-        try {
-            connectivityManager?.registerNetworkCallback(request, networkCallback!!)
-        } catch (e: Exception) {
-            Log.e("TunnelService", "Не удалось подписаться на смену сети", e)
-            networkCallback = null
-        }
     }
-    
-    private fun handleNetworkChange() {
-        val now = System.currentTimeMillis()
-        if (now - lastNetworkChangeTime < 5000) return
-        lastNetworkChangeTime = now
 
-        if (TunnelManager.running.value && !isTunnelPaused) {
-            Log.d("TunnelService", "Сеть изменилась, мягкий перезапуск Go-клиента")
-            TunnelManager.restartTransport()
+    private fun onNetworkLost(network: Network) {
+        if (network != currentNetwork) return
+        currentNetwork = null
+        lostNetwork = network
+        TunnelManager.networkAvailable = false
+        networkJob?.cancel()
+        networkJob = TunnelManager.scope.launch(Dispatchers.Main) {
+            delay(LONG_LOSS_MS)
+            if (currentNetwork == null && TunnelManager.running.value && !isTunnelPaused) {
+                isTunnelPaused = true
+                Log.d("TunnelService", "Сети нет дольше ${LONG_LOSS_MS / 1000} с — приостанавливаем туннель")
+                TunnelManager.pause()
+                updateNotification(tr("Ожидание сети (Фоновый сон)"))
+            }
         }
     }
 
@@ -288,21 +322,25 @@ class TunnelService : Service() {
             
             
             var wasEverUp = false
+            var downChecks = 0
             val helper = runCatching { WireGuardHelper(applicationContext) }.getOrNull()
             delay(1000)
             while (isActive) {
-                if (!TunnelManager.running.value && !isTunnelPaused) {
-                    
+                // «не работает» во время запуска/перезапуска транспорта — это нормально, не гасим службу
+                val busy = TunnelManager.starting.value || isTunnelPaused
+                if (!TunnelManager.running.value && !busy) {
                     stopSelf()
                     break
                 }
-                if (helper != null && TunnelManager.running.value && !isTunnelPaused) {
+                if (helper != null && TunnelManager.running.value && !busy) {
                     when (helper.watchdogState()) {
-                        WireGuardHelper.WatchdogState.UP -> wasEverUp = true
+                        WireGuardHelper.WatchdogState.UP -> { wasEverUp = true; downChecks = 0 }
                         WireGuardHelper.WatchdogState.DISABLED_BY_EMPTY_WHITELIST -> Unit
                         WireGuardHelper.WatchdogState.DOWN -> {
-                            if (wasEverUp) {
-                                Log.w("TunnelService", "Обнаружена пропажа или замена VPN-интерфейса! Экстренное выключение туннеля.")
+                            // интерфейс пересоздаётся при перезапуске транспорта — ждём 3 проверки подряд (~6 с),
+                            // прежде чем решить, что VPN действительно отобрали (например, включили другой VPN)
+                            if (wasEverUp && ++downChecks >= 3) {
+                                Log.w("TunnelService", "VPN-интерфейс пропал или заменён другим VPN — выключаем туннель")
                                 stopTunnel()
                                 break
                             }

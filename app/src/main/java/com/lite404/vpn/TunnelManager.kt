@@ -61,6 +61,14 @@ object TunnelManager {
     var isLoggingEnabled = true
 
     val running = MutableStateFlow(false)
+    /** Идёт запуск/перезапуск транспорта: running ещё false, но гасить службу нельзя. */
+    val starting = MutableStateFlow(false)
+    /** Есть ли сейчас сеть (ставит TunnelService). Без сети таймауты — не повод выключать туннель. */
+    @Volatile var networkAvailable = true
+    /** Туннель приостановлен из-за долгого отсутствия сети (процесс остановлен, но пользователь его не выключал). */
+    val paused = MutableStateFlow(false)
+    /** Пользователь (или ошибка) остановил туннель — плановые перезапуски больше не делаем. */
+    @Volatile private var stopRequested = false
     val logs = MutableStateFlow<List<LogEntry>>(emptyList())
     val unreadErrorCount = MutableStateFlow(0)
     val config = MutableStateFlow<String?>(null)
@@ -177,6 +185,8 @@ object TunnelManager {
     }
 
     fun start(context: Context, params: TunnelParams, isSwitching: Boolean = false) {
+        if (!isSwitching) stopRequested = false
+        starting.value = true
         scope.launch {
             startStopMutex.lock()
             try {
@@ -294,6 +304,7 @@ object TunnelManager {
                 e.printStackTrace()
                 running.value = false
             } finally {
+                starting.value = false
                 startStopMutex.unlock()
             }
         }
@@ -427,7 +438,7 @@ object TunnelManager {
                                 }
                             }
                             lineTrim.contains("connection refused", true) || lineTrim.contains("timeout", true) -> {
-                                refusedCount++
+                                if (networkAvailable) refusedCount++  // без сети таймауты ожидаемы
                                 if (refusedCount >= 400) {
                                     handleCriticalError("Критическое отсутствие сети (400+ таймаутов). Отключение.")
                                     return@forEachLine
@@ -630,11 +641,7 @@ object TunnelManager {
                     updateLog("watchdog", "⚠ Процесс упал. Перезапуск...", 50, true)
                     activeWorkers.value = 0
                     forceRegenerateUA = true
-                    killProcess()
-                    delay(2000)
-                    if (running.value) {
-                        start(context, params, isSwitching = true)
-                    }
+                    restartProcess(2000)
                     return@launch
                 }
 
@@ -654,11 +661,7 @@ object TunnelManager {
                     } else if (System.currentTimeMillis() - zeroWorkersSince > 90_000 && !ManlCaptchaWebViewManager.isCaptchaPending) {
                         updateLog("watchdog", "⚠ Зомби-процесс (0 воркеров 90с). Перезапуск...", 50, true)
                         forceRegenerateUA = true
-                        killProcess()
-                        delay(2000)
-                        if (running.value) {
-                            start(context, params, isSwitching = true)
-                        }
+                        restartProcess(2000)
                         return@launch
                     }
                 } else {
@@ -671,28 +674,37 @@ object TunnelManager {
     }
 
     fun restartTransport() {
+        updateLog("network_restart", "[СЕТЬ] Перезапуск транспорта из-за смены сети...", 50, false)
+        restartProcess(1500)
+    }
+
+    /**
+     * Перезапуск Go-клиента без выключения туннеля: пока он идёт, [starting] = true, поэтому служба
+     * не считает туннель остановленным. Не перезапускаем, если пользователь тем временем нажал «Стоп».
+     */
+    private fun restartProcess(delayMs: Long) {
         val params = currentParams ?: return
         val context = lastContext ?: return
-        updateLog("network_restart", "[СЕТЬ] Перезапуск транспорта из-за смены сети...", 50, false)
+        starting.value = true
         killProcess()
         scope.launch {
-            delay(1500)
+            delay(delayMs)
+            if (stopRequested) { starting.value = false; return@launch }
             start(context, params, isSwitching = true)
         }
     }
 
     fun pause() {
         if (!running.value) return
+        paused.value = true
         killProcess()
         activeWorkers.value = 0
     }
 
     fun resume() {
-        val ctx = lastContext ?: return
-        val params = currentParams ?: return
-        scope.launch {
-            start(ctx, params, isSwitching = true)
-        }
+        paused.value = false
+        if (currentParams == null) return
+        restartProcess(0)
     }
 
     private fun killProcess() {
@@ -716,6 +728,9 @@ object TunnelManager {
     }
 
     fun stop() {
+        stopRequested = true
+        starting.value = false
+        paused.value = false
         scope.launch {
             startStopMutex.lock()
             try {
@@ -734,6 +749,9 @@ object TunnelManager {
     }
 
     suspend fun stopAndWait() {
+        stopRequested = true
+        starting.value = false
+        paused.value = false
         startStopMutex.lock()
         try {
             withContext(Dispatchers.Main) {

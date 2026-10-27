@@ -1,0 +1,10 @@
+.gradle/
+build/
+app/build/
+local.properties
+*.keystore
+*.jks
+# ядро Xray (65 МБ) — берётся из релиза v0.5.0: libv2ray.aar → app/libs/
+app/libs/*.aar
+.idea/
+*.iml

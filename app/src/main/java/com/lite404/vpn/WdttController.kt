@@ -37,19 +37,22 @@ object WdttController {
         }
     }
 
+    /** Туннель WDTT занят: работает, запускается или ждёт сети. */
+    fun active() = TunnelManager.running.value || TunnelManager.starting.value || TunnelManager.paused.value
+
     /** Остановить WDTT и дождаться, пока туннель освободит VPN. */
     suspend fun stopAndWait(ctx: Context) {
-        if (!TunnelManager.running.value) return
+        if (!active()) return
         stop(ctx)
         repeat(50) {
-            if (!TunnelManager.running.value) return
+            if (!active()) return
             kotlinx.coroutines.delay(100)
         }
         TunnelManager.stopAndWait()
     }
 
     fun stop(ctx: Context) {
-        if (!TunnelManager.running.value) return
+        if (!active()) return
         try {
             ctx.startService(Intent(ctx, TunnelService::class.java).setAction("STOP"))
         } catch (e: Exception) {

@@ -99,6 +99,15 @@ class AppModel(private val ctx: Context) {
     }
     var deviceLimit by mutableStateOf(false)
 
+    /** Показать просьбу снять ограничение батареи (без него Android усыпляет туннель при выключенном экране). */
+    var batteryPrompt by mutableStateOf(false)
+    fun askBatteryOnce() {
+        if (!prefs.batteryAsked && !Battery.isUnrestricted(ctx)) {
+            prefs.batteryAsked = true
+            batteryPrompt = true
+        }
+    }
+
     /** Загрузить данные с сервера. Возвращает true при успехе. */
     suspend fun refresh(t: Token? = token): Boolean {
         if (t == null) return false
@@ -136,8 +145,7 @@ class AppModel(private val ctx: Context) {
     }
 
     fun logout() {
-        XrayVpnService.stop(ctx)
-        WdttController.stop(ctx)
+        Connection.disconnect(ctx)
         prefs.clear()
         token = null
         config = null
@@ -214,6 +222,15 @@ private fun Root() {
         }
     }
     TopToastHost(model, Modifier.align(Alignment.TopCenter))
+    }
+    if (model.batteryPrompt) {
+        AlertDialog(
+            onDismissRequest = { model.batteryPrompt = false },
+            title = { Text(tr("Работа в фоне")) },
+            text = { Text(tr("Чтобы VPN не «засыпал» при выключенном экране и быстро работал после разблокировки, разрешите приложению работать без ограничений батареи.")) },
+            confirmButton = { TextButton(onClick = { model.batteryPrompt = false; Battery.request(ctx) }) { Text(tr("Разрешить")) } },
+            dismissButton = { TextButton(onClick = { model.batteryPrompt = false }) { Text(tr("Не сейчас")) } }
+        )
     }
     if (model.deviceLimit) {
         AlertDialog(
@@ -299,6 +316,7 @@ private class LiveState {
 private fun MainScreen(model: AppModel, tab: Tab) {
     val ctx = LocalContext.current
     val live = remember { LiveState() }
+    LaunchedEffect(Unit) { Connection.attach(ctx) }
     val wdttRunning by TunnelManager.running.collectAsState()
     LaunchedEffect(Unit) {
         val uid = Process.myUid()
@@ -421,19 +439,29 @@ private fun VpnTab(model: AppModel, live: LiveState) {
     val cfg = model.config
     val servers = cfg?.xray ?: emptyList()
     var index by remember { mutableIntStateOf(model.prefs.xrayIndex.coerceIn(0, (servers.size - 1).coerceAtLeast(0))) }
+    val conn by Connection.state.collectAsState()
+    val pings = remember { mutableStateMapOf<Int, Long>() }
+    var pinging by remember { mutableStateOf(false) }
+
+    fun pingServers() {
+        if (pinging || servers.isEmpty()) return
+        pinging = true
+        pings.clear()
+        scope.launch {
+            try {
+                pings.putAll(XrayCore.pingAll(ctx, servers, model.prefs.pingUrl))
+            } finally {
+                pinging = false
+            }
+        }
+    }
+    LaunchedEffect(servers.size) { if (model.prefs.pingOnOpen) pingServers() }
 
     fun connect() {
         val s = servers.getOrNull(index) ?: return
         val conf = runCatching { XrayConfig.build(s.config) }.getOrElse { model.notify(tr("Не удалось подготовить конфиг: %s", it.message), ToastKind.Error); return }
-        live.xray = "connecting"
-        scope.launch {
-            // сначала полностью выключаем WDTT, иначе туннели мешают друг другу
-            if (TunnelManager.running.value) {
-                WdttController.stopAndWait(ctx)
-                kotlinx.coroutines.delay(1200)
-            }
-            XrayVpnService.start(ctx, conf, s.name)
-        }
+        model.askBatteryOnce()
+        Connection.connectXray(ctx, s, conf)
     }
     val askVpn = rememberVpnPermission { connect() }
 
@@ -447,25 +475,24 @@ private fun VpnTab(model: AppModel, live: LiveState) {
         Spacer(Modifier.height(20.dp))
         cfg?.let { DaysLeft(it.user) }
         Spacer(Modifier.height(16.dp))
+        val mine = conn.mode == VpnMode.XRAY
         val st = when {
-            live.xray == "running" -> "on"
-            live.xray == "connecting" -> "connecting"
+            mine && conn.phase == Phase.ON -> "on"
+            mine && (conn.phase == Phase.CONNECTING || conn.phase == Phase.STOPPING) -> "connecting"
             else -> "off"
         }
         PowerButton(st) {
             when {
-                st != "off" -> { XrayVpnService.stop(ctx); live.xray = "stopped" }
+                st != "off" -> Connection.disconnect(ctx)
                 cfg?.error == "device_limit" -> model.deviceLimit = true
                 cfg?.error == "expired" -> model.notify(AppApi.errorText("expired"), ToastKind.Error)
                 servers.isEmpty() -> model.notify(AppApi.errorText(cfg?.error) ?: tr("Нет серверов. Нажмите «Обновить подписку»"), ToastKind.Error)
                 else -> askVpn()
             }
         }
-        if (live.xray.startsWith("error:")) {
-            Spacer(Modifier.height(10.dp))
-            Text(tr("Ошибка: ") + live.xray.removePrefix("error:"), color = Danger, fontSize = 13.sp, textAlign = TextAlign.Center)
-        }
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(10.dp))
+        StatusLine(conn, VpnMode.XRAY)
+        Spacer(Modifier.height(18.dp))
         // трафик слева, обновление подписки — иконкой справа
         Row(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Card).padding(start = 16.dp, end = 4.dp),
@@ -485,13 +512,19 @@ private fun VpnTab(model: AppModel, live: LiveState) {
             }
         }
         Spacer(Modifier.height(16.dp))
-        Text(tr("Серверы"), color = Muted, fontSize = 13.sp, modifier = Modifier.fillMaxWidth().padding(start = 4.dp, bottom = 6.dp))
+        Row(Modifier.fillMaxWidth().padding(start = 4.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(tr("Серверы"), color = Muted, fontSize = 13.sp, modifier = Modifier.weight(1f))
+            TextButton(onClick = { pingServers() }, enabled = !pinging && servers.isNotEmpty()) {
+                if (pinging) CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
+                else Text(tr("Пинг"), color = Accent, fontSize = 13.sp)
+            }
+        }
         if (servers.isEmpty()) Text(tr("Нет серверов"), color = Muted, modifier = Modifier.fillMaxWidth().padding(4.dp))
         servers.forEachIndexed { i, srv ->
-            ServerRow(srv.name, i == index) {
+            ServerRow(srv.name, i == index, pings[i], pinging && i !in pings) {
                 if (i != index) {
                     index = i; model.prefs.xrayIndex = i
-                    if (live.xray == "running") askVpn() // переподключение к новому серверу
+                    if (mine && conn.phase == Phase.ON) askVpn() // переподключение к новому серверу
                 }
             }
             Spacer(Modifier.height(8.dp))
@@ -499,8 +532,36 @@ private fun VpnTab(model: AppModel, live: LiveState) {
     }
 }
 
+/** Строка под кнопкой: ошибка, «другой режим включён» или результат проверки соединения. */
 @Composable
-private fun ServerRow(name: String, selected: Boolean, onClick: () -> Unit) {
+private fun StatusLine(conn: ConnState, tabMode: VpnMode) {
+    val ctx = LocalContext.current
+    when {
+        conn.mode == null && conn.error != null && conn.phase == Phase.OFF ->
+            Text(tr("Ошибка: ") + conn.error, color = Danger, fontSize = 13.sp, textAlign = TextAlign.Center)
+        conn.mode != null && conn.mode != tabMode && conn.phase != Phase.OFF ->
+            Text(
+                if (tabMode == VpnMode.XRAY) tr("Сейчас включён WDTT. Нажмите кнопку — переключимся на обычный VPN")
+                else tr("Сейчас включён обычный VPN. Нажмите кнопку — переключимся на WDTT"),
+                color = Muted, fontSize = 13.sp, textAlign = TextAlign.Center
+            )
+        conn.mode == tabMode && conn.phase == Phase.ON -> Row(verticalAlignment = Alignment.CenterVertically) {
+            val t = conn.test
+            if (t != null) {
+                if (t.running) CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 2.dp)
+                else Text("●", color = if (t.ok) Accent else Danger, fontSize = 12.sp)
+                Spacer(Modifier.width(6.dp))
+                Text(t.text, color = if (t.ok || t.running) Muted else Danger, fontSize = 13.sp, textAlign = TextAlign.Center)
+            }
+            if (t?.running != true) {
+                TextButton(onClick = { Connection.test(ctx) }) { Text(tr("Проверить"), color = Accent, fontSize = 13.sp) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ServerRow(name: String, selected: Boolean, ping: Long?, pinging: Boolean, onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Card)
             .border(1.5.dp, if (selected) Accent else Color.Transparent, RoundedCornerShape(14.dp))
@@ -508,6 +569,16 @@ private fun ServerRow(name: String, selected: Boolean, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(name, fontSize = 16.sp, modifier = Modifier.weight(1f))
+        when {
+            pinging -> CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp, color = Muted)
+            ping == null -> Unit
+            ping < 0 -> Text(tr("нет ответа"), color = Danger, fontSize = 13.sp)
+            else -> Text(
+                tr("%s мс", ping), fontSize = 13.sp, fontFamily = FontFamily.Monospace,
+                color = when { ping < 250 -> Accent; ping < 600 -> Color(0xFFFFC233); else -> Danger }
+            )
+        }
+        Spacer(Modifier.width(12.dp))
         RadioButton(selected = selected, onClick = onClick, modifier = Modifier.size(24.dp))
     }
 }
@@ -556,37 +627,17 @@ private fun Header(title: String, subtitle: String? = null) {
 @Composable
 private fun WdttTab(model: AppModel, live: LiveState) {
     val ctx = LocalContext.current
-    val scope = rememberCoroutineScope()
     val cfg = model.config
     val servers = cfg?.wdtt ?: emptyList()
     val hash = cfg?.vkHash ?: ""
     var index by remember { mutableIntStateOf(model.prefs.wdttIndex.coerceIn(0, (servers.size - 1).coerceAtLeast(0))) }
     val stats by TunnelManager.stats.collectAsState()
-    val workers by TunnelManager.activeWorkers.collectAsState()
+    val conn by Connection.state.collectAsState()
 
-    var starting by remember { mutableStateOf(false) }
     fun connect() {
         val s = servers.getOrNull(index) ?: return
-        if (starting) return // защита от двойного нажатия
-        starting = true
-        scope.launch {
-            try {
-                // сначала полностью выключаем обычный VPN и даём системе освободить его
-                val xrayWasOn = XrayVpnService.state(ctx).let { it == "running" || it == "connecting" }
-                if (xrayWasOn) {
-                    XrayVpnService.stopAndWait(ctx)
-                    kotlinx.coroutines.delay(1200)
-                }
-                WdttController.start(ctx, s, hash)
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                CrashLog.save(e, "WDTT: ошибка при подключении (без вылета)")
-                model.notify(e.message ?: tr("Не удалось включить WDTT"), ToastKind.Error)
-            } finally {
-                starting = false
-            }
-        }
+        model.askBatteryOnce()
+        Connection.connectWdtt(ctx, s, hash)
     }
     val askVpn = rememberVpnPermission { connect() }
 
@@ -598,22 +649,24 @@ private fun WdttTab(model: AppModel, live: LiveState) {
         Spacer(Modifier.height(12.dp))
         SpeedRow(live)
         Spacer(Modifier.height(28.dp))
+        val mine = conn.mode == VpnMode.WDTT
         val st = when {
-            live.wdtt && workers > 0 -> "on"
-            live.wdtt -> "connecting"
+            mine && conn.phase == Phase.ON -> "on"
+            mine && (conn.phase == Phase.CONNECTING || conn.phase == Phase.STOPPING) -> "connecting"
             else -> "off"
         }
         PowerButton(st) {
             when {
-                live.wdtt -> WdttController.stop(ctx)
+                st != "off" -> Connection.disconnect(ctx)
                 cfg?.error == "expired" -> model.notify(AppApi.errorText("expired"), ToastKind.Error)
                 hash.isBlank() -> model.notify(tr("Добавьте хеш VK в боте"), ToastKind.Error)
                 servers.isEmpty() -> model.notify(tr("Для вас нет серверов WDTT"), ToastKind.Error)
                 else -> askVpn()
             }
         }
-        Spacer(Modifier.height(12.dp))
-        if (live.wdtt) Text(stats, color = Muted, fontSize = 13.sp, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(10.dp))
+        StatusLine(conn, VpnMode.WDTT)
+        if (mine && conn.phase != Phase.OFF) Text(stats, color = Muted, fontSize = 13.sp, textAlign = TextAlign.Center)
         if (hash.isBlank()) {
             Spacer(Modifier.height(8.dp))
             Text(tr("Хеш VK не задан. Добавьте его в боте и нажмите «Обновить подписку» на вкладке VPN."), color = Danger, fontSize = 13.sp, textAlign = TextAlign.Center)
@@ -622,7 +675,8 @@ private fun WdttTab(model: AppModel, live: LiveState) {
         Spacer(Modifier.height(24.dp))
         Picker(tr("Страна"), servers, index, { it.name }) {
             index = it; model.prefs.wdttIndex = it
-            if (live.wdtt) { WdttController.stop(ctx); model.notify(tr("Страна изменена. Включите туннель снова"), ToastKind.Info) }
+            // включён WDTT — сразу переподключаемся к новой стране
+            if (mine && conn.phase == Phase.ON) askVpn()
         }
     }
 }
@@ -773,6 +827,51 @@ private fun SettingsTab(model: AppModel) {
                 Text(current, color = Accent, fontSize = 15.sp)
             }
         }
+        Section(tr("Пинг и проверка соединения")) {
+            var pingOnOpen by remember { mutableStateOf(model.prefs.pingOnOpen) }
+            var testAfter by remember { mutableStateOf(model.prefs.testAfterConnect) }
+            var url by remember { mutableStateOf(model.prefs.pingUrl) }
+            var chooseUrl by remember { mutableStateOf(false) }
+            SwitchLine(tr("Пинговать серверы при открытии"), pingOnOpen) { pingOnOpen = it; model.prefs.pingOnOpen = it }
+            SwitchLine(tr("Проверять интернет после подключения"), testAfter) { testAfter = it; model.prefs.testAfterConnect = it }
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { chooseUrl = true }.padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(tr("Адрес для проверки"), fontSize = 15.sp, modifier = Modifier.weight(1f))
+                Text(url.removePrefix("https://").substringBefore("/"), color = Accent, fontSize = 13.sp)
+            }
+            Text(tr("Пинг — время полного запроса через сервер (подключение + ответ сайта), а не ICMP. Поэтому цифры выше, чем у обычного ping."), color = Muted, fontSize = 12.sp)
+            if (chooseUrl) AlertDialog(
+                onDismissRequest = { chooseUrl = false },
+                title = { Text(tr("Адрес для проверки")) },
+                text = {
+                    Column {
+                        Prefs.PING_URLS.forEach { u ->
+                            Row(
+                                Modifier.fillMaxWidth().clickable { url = u; model.prefs.pingUrl = u; chooseUrl = false }.padding(vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(selected = u == url, onClick = null, modifier = Modifier.size(24.dp))
+                                Spacer(Modifier.width(12.dp))
+                                Text(u.removePrefix("https://"), fontSize = 14.sp)
+                            }
+                        }
+                    }
+                },
+                confirmButton = { TextButton(onClick = { chooseUrl = false }) { Text(tr("Закрыть")) } }
+            )
+        }
+        Section(tr("Работа в фоне")) {
+            var unrestricted by remember { mutableStateOf(Battery.isUnrestricted(ctx)) }
+            LaunchedEffect(Unit) { while (true) { unrestricted = Battery.isUnrestricted(ctx); delay(1500) } }
+            Text(
+                if (unrestricted) tr("Ограничение батареи снято — VPN не засыпает при выключенном экране")
+                else tr("Android может усыплять VPN при выключенном экране — после разблокировки он переподключается"),
+                color = if (unrestricted) Muted else Color(0xFFFFC233), fontSize = 13.sp
+            )
+            if (!unrestricted) TextButton(onClick = { Battery.request(ctx) }) { Text(tr("Разрешить работу в фоне")) }
+        }
         Section("WDTT") {
             TextButton(onClick = { showLogs = true }) { Text(tr("Журнал аварийного туннеля")) }
         }
@@ -835,6 +934,17 @@ private fun SettingsTab(model: AppModel) {
             confirmButton = { TextButton(onClick = { confirmLogout = false; model.logout() }) { Text(tr("Выйти"), color = Danger) } },
             dismissButton = { TextButton(onClick = { confirmLogout = false }) { Text(tr("Отмена")) } }
         )
+    }
+}
+
+@Composable
+private fun SwitchLine(text: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { onChange(!checked) }.padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text, fontSize = 15.sp, modifier = Modifier.weight(1f))
+        Switch(checked = checked, onCheckedChange = onChange)
     }
 }
 
