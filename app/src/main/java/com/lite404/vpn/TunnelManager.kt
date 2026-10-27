@@ -311,8 +311,12 @@ object TunnelManager {
     }
 
     private fun startLogReader() {
+        // Читатель привязан к СВОЕМУ процессу: после перезапуска транспорта старый читатель завершается
+        // позже нового запуска и не должен трогать новый процесс (иначе сторожевой таймер решит, что
+        // процесс умер, и будет перезапускать клиент по кругу).
+        val proc = process ?: return
         readerJob = scope.launch {
-            val reader = process?.inputStream?.bufferedReader() ?: return@launch
+            val reader = proc.inputStream.bufferedReader()
             var collectingConfig = false
             val configBuilder = StringBuilder()
 
@@ -601,11 +605,28 @@ object TunnelManager {
                     updateLog("sys_error", "Системная ошибка: ${e.message}", -1, true)
                 }
             } finally {
-                running.value = false
-                process = null
+                if (process === proc) {
+                    process = null
+                    // клиент завершился сам (не по кнопке и не на перезапуске) — поднимаем снова,
+                    // но не чаще 5 раз в минуту, иначе честно останавливаемся
+                    val now = System.currentTimeMillis()
+                    val canRestart = synchronized(crashTimes) {
+                        crashTimes.removeAll { now - it > 60_000 }
+                        (crashTimes.size < 5).also { if (it) crashTimes.add(now) }
+                    }
+                    if (!stopRequested && !paused.value && !starting.value && canRestart) {
+                        updateLog("process_exit", "⚠ Клиент WDTT завершился — перезапуск...", 50, true)
+                        restartProcess(2000)
+                    } else if (!starting.value) {
+                        running.value = false
+                    }
+                }
             }
         }
     }
+
+    /** Моменты самопроизвольных завершений клиента за последнюю минуту (защита от перезапуска по кругу). */
+    private val crashTimes = mutableListOf<Long>()
 
     private fun handleCriticalError(message: String) {
         updateLog("circuit_breaker", "[СТОП] $message", -1, true)
@@ -698,6 +719,7 @@ object TunnelManager {
         if (!running.value) return
         paused.value = true
         killProcess()
+        running.value = false
         activeWorkers.value = 0
     }
 
