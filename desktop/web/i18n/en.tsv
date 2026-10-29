@@ -1,0 +1,150 @@
+Ошибка сервера	Server error
+Нет связи с сервером: %s	No connection to server: %s
+Это не токен Lite 404. Он начинается с L404-	This is not a Lite 404 token. It starts with L404-
+Лимит устройств	Device limit
+На вашей подписке уже подключено максимум устройств. Откройте бота → «Устройства» и удалите ненужное, затем нажмите «Обновить подписку».	Your subscription already has the maximum number of devices. Open the bot → «Devices», remove one you don't need, then tap «Refresh subscription».
+Открыть бота	Open bot
+Закрыть	Close
+Введите токен из бота	Enter the token from the bot
+Вставить	Paste
+Войти	Sign in
+Токен выдаёт бот @lite404bot	The token is issued by the bot @lite404bot
+время	time
+Не удалось подготовить конфиг: %s	Could not prepare config: %s
+время подключения	connection time
+Нет серверов. Нажмите «Обновить подписку»	No servers. Tap «Refresh subscription»
+Ошибка: 	Error: 
+Трафик	Traffic
+Подписка обновлена	Subscription updated
+Обновить подписку	Refresh subscription
+Серверы	Servers
+Нет серверов	No servers
+Подписка выключена	Subscription disabled
+Подписка бессрочная	Subscription never expires
+Осталось %s · до %s	Days left: %s · until %s
+Добавьте хеш VK в боте	Add your VK hash in the bot
+Хеш VK не задан. Добавьте его в боте и нажмите «Обновить подписку» на вкладке VPN.	VK hash is not set. Add it in the bot and tap «Refresh subscription» on the VPN tab.
+Страна	Country
+Страна изменена. Включите туннель снова	Country changed. Turn the tunnel on again
+Приложения	Apps
+Все приложения через VPN	All apps through VPN
+Все, кроме выбранных	All except selected
+Только выбранные	Only selected
+Выберите хотя бы одно приложение — пока все идут через VPN	Select at least one app — for now all go through VPN
+Переподключите VPN, чтобы изменения заработали	Reconnect VPN to apply changes
+Поиск	Search
+Показывать системные	Show system apps
+выбрано: %s	selected: %s
+Настройки	Settings
+Язык	Language
+Язык приложения	App language
+Как в системе	System default
+Аккаунт	Account
+Устройства	Devices
+%s из %s	%s of %s
+Сервер	Server
+Выйти из аккаунта	Sign out
+Последний сбой	Last crash
+Отчёт скопирован	Report copied
+Скопировать	Copy
+Удалить	Delete
+О приложении	About
+Версия	Version
+Ядро	Core
+Лицензия	License
+Основано на WDTT (amurcanov/proxy-turn-vk-android) и Xray-core.	Based on WDTT (amurcanov/proxy-turn-vk-android) and Xray-core.
+Исходный код	Source code
+Бот @lite404bot	Bot @lite404bot
+Выйти из аккаунта?	Sign out?
+VPN отключится, данные подписки удалятся с телефона. Чтобы войти снова, понадобится токен из бота.	VPN will disconnect and subscription data will be removed from the phone. To sign in again you will need a token from the bot.
+Выйти	Sign out
+Отмена	Cancel
+Очистить	Clear
+Пусто	Empty
+Б	B
+КБ	KB
+МБ	MB
+ГБ	GB
+ТБ	TB
+/с	/s
+Сервер %s	Server %s
+сертификат сервера не совпадает с токеном	server certificate does not match the token
+Токен не подходит. Возьмите новый в боте @lite404bot	Token is not valid. Get a new one in the bot @lite404bot
+Слишком часто. Попробуйте через минуту	Too often. Try again in a minute
+Сервер ответил %s	Server responded %s
+Достигнут лимит устройств. Удалите ненужное устройство в боте	Device limit reached. Remove an unused device in the bot
+Подписка закончилась или выключена. Продлите её в боте	Subscription expired or disabled. Renew it in the bot
+На сервере выключена JSON-подписка (админу: wdtt doctor)	JSON subscription is disabled on the server (for admin: wdtt doctor)
+Сервер прислал непонятную подписку	Server sent an unreadable subscription
+Ошибка подписки: %s	Subscription error: %s
+Запуск...	Starting...
+Восстановление соединения...	Restoring connection...
+Подключение...	Connecting...
+Ожидание сети (Фоновый сон)	Waiting for network (sleep)
+Туннель активен	Tunnel active
+Уведомление о работе туннеля	Tunnel status notification
+Отключить	Disconnect
+VPN включён	VPN on
+выбранные приложения не установлены — измените список на вкладке «Приложения»	selected apps are not installed — change the list on the «Apps» tab
+нет разрешения на VPN	no VPN permission
+Система не дала запустить туннель. Откройте приложение и попробуйте снова	The system did not allow the tunnel to start. Open the app and try again
+%s мс	%s ms
+Android может усыплять VPN при выключенном экране — после разблокировки он переподключается	Android may put the VPN to sleep while the screen is off — it reconnects after unlocking
+Адрес для проверки	Check address
+Интернет работает · %s мс	Internet works · %s ms
+Не сейчас	Not now
+Ограничение батареи снято — VPN не засыпает при выключенном экране	Battery restriction is off — the VPN does not sleep while the screen is off
+Пинг	Ping
+Пинг и проверка соединения	Ping and connection check
+Пинг — время полного запроса через сервер (подключение + ответ сайта), а не ICMP. Поэтому цифры выше, чем у обычного ping.	Ping is the time of a full request through the server (connect + site response), not ICMP, so it is higher than a plain ping.
+Пинговать серверы при открытии	Ping servers on open
+Проверить	Check
+Проверяем соединение…	Checking connection…
+Проверять интернет после подключения	Check internet after connecting
+Работа в фоне	Background work
+Разрешить	Allow
+Разрешить работу в фоне	Allow background work
+Сайты не открываются: %s	Sites do not open: %s
+Сервер не отвечает через туннель. Попробуйте другую страну	The server does not respond through the tunnel. Try another country
+Туннель работает · потоков %s	Tunnel works · %s streams
+Чтобы VPN не «засыпал» при выключенном экране и быстро работал после разблокировки, разрешите приложению работать без ограничений батареи.	To keep the VPN from sleeping while the screen is off and working right after unlocking, allow the app to run without battery restrictions.
+нет ответа	no response
+туннель не работает	tunnel is not running
+Резервный VPN через VK	Backup VPN via VK
+Журнал резервного VPN	Backup VPN log
+Резервный VPN	Backup VPN
+Для вас нет серверов резервного VPN	No backup VPN servers for you
+Сейчас включён резервный VPN. Нажмите кнопку — переключимся на обычный	Backup VPN is on. Tap the button to switch to the regular one
+Сейчас включён обычный VPN. Нажмите кнопку — переключимся на резервный	Regular VPN is on. Tap the button to switch to the backup one
+Резервный VPN остановился. Подробности — в журнале (Настройки)	Backup VPN stopped. Details are in the log (Settings)
+Какие приложения идут через VPN. Действует и для обычного, и для резервного VPN	Which apps go through the VPN. Applies to both the regular and the backup VPN
+Резерв	Backup
+Включайте, когда другие VPN не подключаются	Turn it on when other VPNs don't connect
+Маршрутизация	Routing
+Всё через VPN	Everything through VPN
+Основной VPN	Main VPN
+Умная	Smart
+Российские сайты — напрямую, реклама блокируется, остальное — через VPN	Russian sites go direct, ads are blocked, everything else goes through the VPN
+Все сайты и приложения — через VPN	All sites and apps go through the VPN
+Локальная сеть напрямую	Local network directly
+Роутер, принтер и другие устройства дома (192.168.x.x) — мимо VPN	Router, printer and other home devices (192.168.x.x) bypass the VPN
+Роутер, принтер и другие устройства дома (192.168.x.x) — мимо VPN. Остальное всегда идёт через VPN.	Router, printer and other home devices (192.168.x.x) bypass the VPN. Everything else always goes through the VPN.
+Изменения применятся при следующем подключении.	Changes apply on the next connection.
+Не настроено на сервере	Not configured on the server
+Не удалось скачать правила маршрутизации — сейчас всё идёт через VPN	Could not download routing rules — everything goes through the VPN for now
+
+Закрыть программу	Quit
+Закрыть программу?	Quit the app?
+VPN отключится, системный прокси снимется.	The VPN will disconnect and the system proxy will be turned off.
+Программа закрыта. Эту вкладку можно закрыть.	The app is closed. You can close this tab.
+Системный прокси	System proxy
+Включать системный прокси при подключении	Turn on the system proxy when connecting
+Для программ, которые не видят системный прокси:	For programs that ignore the system proxy:
+Все сайты и программы — через VPN	All sites and programs go through the VPN
+VPN отключится, данные подписки удалятся с компьютера. Чтобы войти снова, понадобится токен из бота.	The VPN will disconnect and subscription data will be removed from this computer. To sign in again you will need a token from the bot.
+Системный прокси Windows включается автоматически	The Windows system proxy is turned on automatically
+Системный прокси macOS включается автоматически	The macOS system proxy is turned on automatically
+Системный прокси включается через gsettings (GNOME и похожие). В других окружениях укажите прокси вручную	The system proxy is set via gsettings (GNOME and similar). In other desktops set the proxy manually
+Системный прокси не включился — укажите вручную HTTP 127.0.0.1:10809	The system proxy did not turn on — set HTTP 127.0.0.1:10809 manually
+Резервный VPN для этой системы пока недоступен	The backup VPN is not available for this system yet
+Не удалось скачать правила маршрутизации — сейчас всё идёт через VPN	Could not download routing rules — everything goes through the VPN for now

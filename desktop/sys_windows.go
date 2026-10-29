@@ -1,7 +1,10 @@
 package main
 
 import (
+	"os"
 	"os/exec"
+	"strconv"
+	"strings"
 	"syscall"
 
 	"golang.org/x/sys/windows/registry"
@@ -68,3 +71,14 @@ func openBrowser(url string) {
 }
 
 const proxyHint = "Системный прокси Windows включается автоматически"
+
+func hideWindow(cmd *exec.Cmd) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000} // CREATE_NO_WINDOW
+}
+
+func killIfWdtt(p *os.Process, pid int) {
+	out, _ := exec.Command("tasklist", "/FI", "PID eq "+strconv.Itoa(pid), "/NH").Output()
+	if strings.Contains(string(out), "wdtt-client") {
+		p.Kill()
+	}
+}

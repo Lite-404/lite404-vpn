@@ -23,6 +23,11 @@ type Settings struct {
 	SystemProxy bool            `json:"system_proxy"` // включать системный прокси при подключении
 	PingURL     string          `json:"ping_url"`
 	ProxyActive bool            `json:"proxy_active"` // прокси включён нами — снять после аварийного выхода
+	Lang        string          `json:"lang"`         // язык интерфейса; пусто — как в системе
+	PingOnOpen  bool            `json:"ping_on_open"`
+	TestAfter   bool            `json:"test_after_connect"`
+	LanWdtt     bool            `json:"lan_direct_wdtt"`
+	WdttServer  int             `json:"wdtt_server"`
 }
 
 func dataDir() string {
@@ -36,7 +41,7 @@ func dataDir() string {
 }
 
 func loadSettings() *Settings {
-	s := &Settings{Routing: "smart", SystemProxy: true, PingURL: "https://www.gstatic.com/generate_204"}
+	s := &Settings{Routing: "smart", SystemProxy: true, PingURL: pingURLs[0], PingOnOpen: true, TestAfter: true, LanWdtt: true}
 	if data, err := os.ReadFile(filepath.Join(dataDir(), "settings.json")); err == nil {
 		json.Unmarshal(data, s)
 	}
@@ -119,4 +124,11 @@ func download(url, target string) error {
 		return errors.New("файл не скачался")
 	}
 	return os.Rename(tmp, target)
+}
+
+// Адреса для пинга и проверки соединения — как в Android-приложении.
+var pingURLs = []string{
+	"https://www.gstatic.com/generate_204",
+	"https://cp.cloudflare.com/generate_204",
+	"https://connectivitycheck.gstatic.com/generate_204",
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 )
 
@@ -50,3 +51,12 @@ func ourProxyActive() bool {
 func openBrowser(url string) { exec.Command("xdg-open", url).Start() }
 
 const proxyHint = "Системный прокси включается через gsettings (GNOME и похожие). В других окружениях укажите прокси вручную"
+
+func hideWindow(cmd *exec.Cmd) {}
+
+func killIfWdtt(p *os.Process, pid int) {
+	out, _ := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "comm=").Output()
+	if strings.Contains(string(out), "wdtt-client") {
+		p.Kill()
+	}
+}

@@ -124,7 +124,7 @@ Android может усыплять VPN при выключенном экран
 Всё через VPN	Everything through VPN
 Основной VPN	Main VPN
 Умная	Smart
-Российские сайты — напрямую, реклама и торренты блокируются, остальное — через VPN	Russian sites go direct, ads and torrents are blocked, everything else goes through the VPN
+Российские сайты — напрямую, реклама блокируется, остальное — через VPN	Russian sites go direct, ads are blocked, everything else goes through the VPN
 Все сайты и приложения — через VPN	All sites and apps go through the VPN
 Локальная сеть напрямую	Local network directly
 Роутер, принтер и другие устройства дома (192.168.x.x) — мимо VPN	Router, printer and other home devices (192.168.x.x) bypass the VPN

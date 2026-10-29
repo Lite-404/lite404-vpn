@@ -1,0 +1,15 @@
+Закрыть программу	Quit
+Закрыть программу?	Quit the app?
+VPN отключится, системный прокси снимется.	The VPN will disconnect and the system proxy will be turned off.
+Программа закрыта. Эту вкладку можно закрыть.	The app is closed. You can close this tab.
+Системный прокси	System proxy
+Включать системный прокси при подключении	Turn on the system proxy when connecting
+Для программ, которые не видят системный прокси:	For programs that ignore the system proxy:
+Все сайты и программы — через VPN	All sites and programs go through the VPN
+VPN отключится, данные подписки удалятся с компьютера. Чтобы войти снова, понадобится токен из бота.	The VPN will disconnect and subscription data will be removed from this computer. To sign in again you will need a token from the bot.
+Системный прокси Windows включается автоматически	The Windows system proxy is turned on automatically
+Системный прокси macOS включается автоматически	The macOS system proxy is turned on automatically
+Системный прокси включается через gsettings (GNOME и похожие). В других окружениях укажите прокси вручную	The system proxy is set via gsettings (GNOME and similar). In other desktops set the proxy manually
+Системный прокси не включился — укажите вручную HTTP 127.0.0.1:10809	The system proxy did not turn on — set HTTP 127.0.0.1:10809 manually
+Резервный VPN для этой системы пока недоступен	The backup VPN is not available for this system yet
+Не удалось скачать правила маршрутизации — сейчас всё идёт через VPN	Could not download routing rules — everything goes through the VPN for now

@@ -812,7 +812,6 @@ private fun SettingsTab(model: AppModel) {
         Section(tr("Аккаунт")) {
             model.config?.user?.name?.let { InfoLine(tr("Аккаунт"), it) }
             model.config?.user?.let { if (it.devicesLimit > 0) InfoLine(tr("Устройства"), tr("%s из %s", it.devices, it.devicesLimit)) }
-            InfoLine(tr("Сервер"), model.token?.addr ?: "—")
             TextButton(onClick = { confirmLogout = true }) {
                 Icon(Icons.AutoMirrored.Filled.ExitToApp, null, tint = Danger); Spacer(Modifier.width(6.dp))
                 Text(tr("Выйти из аккаунта"), color = Danger)
@@ -836,7 +835,7 @@ private fun SettingsTab(model: AppModel) {
             Text(tr("Маршрутизация"), fontSize = 15.sp)
             Spacer(Modifier.height(4.dp))
             for ((value, title, hint) in listOf(
-                Triple(Routing.MODE_SMART, tr("Умная"), if (smartReady) tr("Российские сайты — напрямую, реклама и торренты блокируются, остальное — через VPN") else tr("Не настроено на сервере")),
+                Triple(Routing.MODE_SMART, tr("Умная"), if (smartReady) tr("Российские сайты — напрямую, реклама блокируется, остальное — через VPN") else tr("Не настроено на сервере")),
                 Triple(Routing.MODE_OFF, tr("Всё через VPN"), tr("Все сайты и приложения — через VPN")),
             )) {
                 val enabled = value == Routing.MODE_OFF || smartReady

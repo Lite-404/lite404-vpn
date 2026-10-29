@@ -3,222 +3,532 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Lite404 VPN</title>
+<title>Lite 404 VPN</title>
 <style>
   :root { --bg:#0b0b0c; --card:#17171a; --line:#26262b; --accent:#b4ff39; --muted:#8a8a90; --warn:#ffc233; --danger:#ff5a5a; --text:#f2f2f3; }
   * { box-sizing:border-box; }
+  html, body { height:100%; }
   body { margin:0; background:var(--bg); color:var(--text); font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
-  main { max-width:520px; margin:0 auto; padding:28px 18px 60px; }
-  header { display:flex; align-items:baseline; justify-content:space-between; margin-bottom:20px; }
-  h1 { font-size:22px; margin:0; letter-spacing:-.3px; } h1 b { color:var(--accent); }
-  .ver { color:var(--muted); font-size:12px; }
-  .card { background:var(--card); border-radius:16px; padding:16px; margin-bottom:14px; }
-  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.6px; color:var(--muted); margin:0 0 10px; font-weight:600; }
-  .muted { color:var(--muted); font-size:13px; }
-  .warn { color:var(--warn); font-size:13px; } .err { color:var(--danger); font-size:13px; }
-  button { font:inherit; border:0; border-radius:12px; padding:10px 14px; cursor:pointer; background:#26262b; color:var(--text); }
-  button:hover { background:#303036; } button:disabled { opacity:.5; cursor:default; }
-  button.primary { background:var(--accent); color:#111; font-weight:600; }
-  textarea, input[type=text] { width:100%; font:13px ui-monospace,Consolas,monospace; background:#0f0f11; color:var(--text); border:1px solid var(--line); border-radius:10px; padding:10px; }
-  textarea { height:90px; resize:vertical; }
-  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-  .power { display:flex; flex-direction:column; align-items:center; gap:10px; padding:10px 0 6px; }
-  .ring { width:132px; height:132px; border-radius:50%; border:6px solid #3a3a40; background:#111113; color:var(--text); font-size:15px; font-weight:600; transition:border-color .2s; }
-  .ring.on { border-color:var(--accent); } .ring.connecting { border-color:var(--warn); }
-  .state { font-size:16px; font-weight:600; }
-  .server { display:flex; justify-content:space-between; align-items:center; padding:11px 12px; border-radius:12px; cursor:pointer; border:1px solid transparent; }
-  .server:hover { background:#1f1f23; } .server.sel { border-color:var(--accent); }
-  .ping { font-size:13px; font-variant-numeric:tabular-nums; }
-  .opt { display:flex; gap:10px; padding:8px 0; cursor:pointer; align-items:flex-start; }
-  .opt input { margin-top:3px; accent-color:var(--accent); }
+  button { font:inherit; color:inherit; border:0; background:none; cursor:pointer; }
+  button:disabled { opacity:.45; cursor:default; }
+  a { color:var(--accent); text-decoration:none; }
+  .muted { color:var(--muted); } .small { font-size:13px; } .xs { font-size:12px; }
+  .err { color:var(--danger); } .acc { color:var(--accent); }
+  .mono { font-family:ui-monospace,Consolas,"SF Mono",monospace; }
   .hidden { display:none !important; }
-  #toast { position:fixed; left:50%; bottom:22px; transform:translateX(-50%); background:#26262b; padding:10px 16px; border-radius:12px; max-width:90%; font-size:14px; opacity:0; transition:opacity .2s; pointer-events:none; }
-  #toast.show { opacity:1; }
-  a { color:var(--accent); }
+  .center { text-align:center; }
+
+  /* каркас: слева навигация (вместо нижней панели на телефоне), справа экран */
+  #app { display:flex; height:100%; }
+  nav { width:210px; flex:none; background:var(--card); display:flex; flex-direction:column; padding:22px 12px; gap:4px; }
+  nav .brand { padding:0 10px 22px; font-weight:800; font-size:18px; }
+  nav .brand b { color:var(--accent); font-style:italic; } nav .brand i { color:var(--accent); font-style:normal; letter-spacing:2px; }
+  nav button { display:flex; align-items:center; gap:12px; padding:11px 12px; border-radius:12px; color:var(--muted); text-align:start; }
+  nav button:hover { background:#1f1f23; color:var(--text); }
+  nav button.on { background:#2a3a10; color:var(--accent); }
+  nav svg { width:20px; height:20px; flex:none; }
+  nav .spacer { flex:1; }
+  main { flex:1; overflow-y:auto; }
+  .page { max-width:560px; margin:0 auto; padding:28px 22px 60px; }
+
+  .gap { height:16px; }
+  h1 { font-size:22px; margin:0; }
+  .section-title { color:var(--accent); font-size:13px; margin:0 0 6px 4px; }
+  .section { background:var(--card); border-radius:14px; padding:16px; margin-bottom:16px; }
+
+  .logo { display:flex; justify-content:center; align-items:flex-end; padding-top:10px; }
+  .logo .l { color:var(--accent); font-weight:700; font-style:italic; font-size:20px; padding:0 6px 9px 0; }
+  .logo .n { font-family:ui-monospace,Consolas,monospace; font-weight:900; font-size:56px; letter-spacing:-4px; line-height:56px; }
+  .logo .v { color:var(--accent); font-weight:900; font-size:20px; letter-spacing:3px; padding:0 0 9px 8px; }
+
+  .cell { display:flex; flex-direction:column; align-items:center; }
+  .cell .val { font-size:17px; font-weight:600; font-family:ui-monospace,Consolas,monospace; }
+  .cell .lab { color:var(--muted); font-size:12px; }
+  .speed { display:flex; justify-content:space-evenly; }
+
+  .power { width:170px; height:170px; border-radius:50%; background:var(--card); border:4px solid #3a3a40; margin:0 auto; display:flex;
+           flex-direction:column; align-items:center; justify-content:center; transition:border-color .2s; color:#3a3a40; }
+  .power:hover { filter:brightness(1.15); }
+  .power.on { border-color:var(--accent); color:var(--accent); } .power.connecting { border-color:var(--warn); color:var(--warn); }
+  .power svg { width:56px; height:56px; } .power b { font-size:18px; }
+  .status { min-height:22px; margin-top:10px; font-size:13px; text-align:center; display:flex; justify-content:center; align-items:center; gap:6px; flex-wrap:wrap; }
+
+  .row { display:flex; align-items:center; gap:10px; }
+  .grow { flex:1; min-width:0; }
+  .traffic { display:flex; align-items:center; background:var(--card); border-radius:14px; padding:12px 8px 12px 16px; }
+  .traffic .big { font-size:17px; font-weight:600; }
+  .iconbtn { width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:var(--accent); }
+  .iconbtn:hover { background:#232328; } .iconbtn svg { width:22px; height:22px; }
+  .textbtn { display:inline-block; color:var(--accent); font-size:13px; padding:6px 10px; border-radius:10px; } .textbtn:hover { background:#232328; }
+  .textbtn.danger { color:var(--danger); }
+
+  .server { display:flex; align-items:center; background:var(--card); border-radius:14px; padding:14px 16px; margin-bottom:8px;
+            border:1.5px solid transparent; cursor:pointer; gap:12px; }
+  .server:hover { background:#1c1c20; } .server.sel { border-color:var(--accent); }
+  .server .name { flex:1; font-size:16px; }
+  .ping { font-size:13px; font-family:ui-monospace,Consolas,monospace; }
+  .radio { width:20px; height:20px; border-radius:50%; border:2px solid var(--muted); flex:none; position:relative; }
+  .radio.on { border-color:var(--accent); } .radio.on::after { content:""; position:absolute; inset:3px; border-radius:50%; background:var(--accent); }
+  .radio.off { opacity:.4; }
+
+  textarea { width:100%; background:#0f0f11; color:var(--text); border:1px solid var(--line); border-radius:12px; padding:12px;
+             font:13px ui-monospace,Consolas,monospace; height:96px; resize:vertical; }
+  .picker { background:var(--card); border-radius:14px; padding:12px 16px; }
+  .picker select { width:100%; background:transparent; color:var(--text); border:0; padding:2px 0 0; font:inherit; font-size:16px; outline:none; }
+  .picker select option { background:var(--card); }
+
+  .opt { display:flex; align-items:center; gap:12px; padding:6px 0; cursor:pointer; }
+  .opt.dis { cursor:default; } .opt.dis .t { color:var(--muted); }
+  .switch { display:flex; align-items:center; padding:4px 0; cursor:pointer; gap:12px; }
+  .toggle { width:46px; height:26px; border-radius:13px; background:#3a3a40; position:relative; flex:none; transition:background .15s; }
+  .toggle::after { content:""; position:absolute; width:20px; height:20px; border-radius:50%; background:#cfcfd4; top:3px; left:3px; transition:left .15s; }
+  .toggle.on { background:var(--accent); } .toggle.on::after { left:23px; background:#111; }
+  .info { display:flex; padding:3px 0; font-size:14px; } .info .k { color:var(--muted); width:110px; flex:none; }
+  .line-btn { display:flex; width:100%; align-items:center; padding:8px 0; border-radius:10px; }
+  .btn { padding:12px 16px; border-radius:24px; font-weight:600; }
+  .btn.primary { background:var(--accent); color:#111; } .btn.outline { border:1px solid #3a3a40; color:var(--accent); }
+
+  #login { max-width:440px; margin:0 auto; min-height:100%; display:flex; flex-direction:column; justify-content:center; align-items:center; padding:24px; }
+  #login .title { font-size:30px; font-weight:700; color:var(--accent); }
+
+  #toast { position:fixed; top:16px; left:50%; transform:translate(-50%,-20px); background:var(--card); border-radius:14px; padding:12px 18px;
+           max-width:min(520px,90vw); font-size:14px; opacity:0; transition:all .2s; pointer-events:none; box-shadow:0 6px 24px #0008; z-index:10; }
+  #toast.show { opacity:1; transform:translate(-50%,0); }
+  #toast.Success { color:var(--accent); } #toast.Error { color:var(--danger); }
+  .dialog-bg { position:fixed; inset:0; background:#000a; display:flex; align-items:center; justify-content:center; z-index:9; }
+  .dialog { background:#1d1d21; border-radius:22px; padding:22px; width:min(420px,92vw); max-height:80vh; overflow:auto; }
+  .dialog h3 { margin:0 0 12px; font-size:19px; } .dialog .acts { display:flex; justify-content:flex-end; gap:6px; margin-top:16px; }
+  .dialog .acts button { color:var(--accent); padding:8px 12px; border-radius:10px; } .dialog .acts button:hover { background:#2a2a30; }
+  .loglist { font:12px ui-monospace,Consolas,monospace; }
+  .loglist div { padding:3px 0; word-break:break-word; }
+  .spin { width:14px; height:14px; border:2px solid #555; border-top-color:var(--accent); border-radius:50%; animation:sp .8s linear infinite; display:inline-block; }
+  @keyframes sp { to { transform:rotate(360deg) } }
 </style>
 </head>
 <body>
-<main>
-  <header><h1>Lite<b>404</b> VPN</h1><span class="ver" id="ver"></span></header>
-
-  <section id="login" class="card hidden">
-    <h2>Вход</h2>
-    <p class="muted">Вставьте токен из бота <a href="https://t.me/lite404bot" target="_blank">@lite404bot</a> (раздел «Приложение»). Он начинается с <code>L404-</code>.</p>
-    <textarea id="token" placeholder="L404-..."></textarea>
-    <div class="row" style="margin-top:10px"><button class="primary" id="loginBtn">Войти</button></div>
-  </section>
-
-  <div id="mainView" class="hidden">
-    <section class="card">
-      <div class="power">
-        <button class="ring" id="power">Подключить</button>
-        <div class="state" id="state">Отключено</div>
-        <div class="muted" id="stateHint"></div>
-        <div class="warn" id="notice"></div>
-      </div>
-    </section>
-
-    <section class="card">
-      <div class="row" style="justify-content:space-between;margin-bottom:6px"><h2 style="margin:0">Серверы</h2>
-        <div class="row"><button id="pingBtn">Пинг</button><button id="refreshBtn">Обновить</button></div></div>
-      <div class="err" id="subError"></div>
-      <div id="servers"></div>
-    </section>
-
-    <section class="card">
-      <h2>Подписка</h2>
-      <div id="user" class="muted"></div>
-    </section>
-
-    <section class="card">
-      <h2>Маршрутизация</h2>
-      <label class="opt"><input type="radio" name="routing" value="smart"><span>Умная<br><span class="muted" id="smartHint"></span></span></label>
-      <label class="opt"><input type="radio" name="routing" value="off"><span>Всё через VPN<br><span class="muted">Все сайты и программы — через VPN</span></span></label>
-      <label class="opt"><input type="checkbox" id="lanDirect"><span>Локальная сеть напрямую<br><span class="muted">Роутер, принтер и другие устройства дома (192.168.x.x) — мимо VPN</span></span></label>
-      <p class="muted">Изменения применятся при следующем подключении.</p>
-    </section>
-
-    <section class="card">
-      <h2>Прокси</h2>
-      <label class="opt"><input type="checkbox" id="sysProxy"><span>Включать системный прокси при подключении<br><span class="muted" id="proxyHint"></span></span></label>
-      <p class="muted">Для программ, которые не видят системный прокси: HTTP <code id="httpAddr"></code>, SOCKS5 <code id="socksAddr"></code>.</p>
-      <div class="err" id="proxyError"></div>
-    </section>
-
-    <section class="card">
-      <h2>Пинг</h2>
-      <p class="muted">Адрес проверки задержки и соединения</p>
-      <div class="row"><input type="text" id="pingUrl" style="flex:1"><button id="pingUrlSave">Сохранить</button></div>
-    </section>
-
-    <section class="card row" style="justify-content:space-between">
-      <button id="logoutBtn">Выйти из аккаунта</button>
-      <button id="quitBtn">Закрыть программу</button>
-    </section>
+<div id="login" class="hidden">
+  <div class="title">Lite 404 VPN</div>
+  <div class="muted" style="margin-top:8px" data-t="Введите токен из бота"></div>
+  <textarea id="token" placeholder="L404-…" style="margin-top:24px"></textarea>
+  <div class="row" style="width:100%;margin-top:12px">
+    <button class="btn outline grow" id="pasteBtn" data-t="Вставить"></button>
+    <button class="btn primary grow" id="loginBtn" data-t="Войти"></button>
   </div>
+  <div class="muted small" style="margin-top:32px" data-t="Токен выдаёт бот @lite404bot"></div>
+  <a class="textbtn" href="https://t.me/lite404bot" target="_blank" data-t="Открыть бота"></a>
+</div>
 
-  <section id="closed" class="card hidden"><h2>Программа закрыта</h2><p class="muted">VPN отключён, системный прокси снят. Эту вкладку можно закрыть.</p></section>
-</main>
+<div id="app" class="hidden">
+  <nav>
+    <div class="brand"><b>Lite</b> 404 <i>VPN</i></div>
+    <button data-tab="vpn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 1a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V11a2 2 0 0 0-2-2h-1V6a5 5 0 0 0-5-5zm-3 8V6a3 3 0 1 1 6 0v3H9z"/></svg><span data-t="VPN"></span></button>
+    <button data-tab="wdtt"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg><span data-t="Резерв"></span></button>
+    <button data-tab="settings"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.5-2.5 1a7.6 7.6 0 0 0-1.7-1L15 3h-4l-.4 2.7a7.6 7.6 0 0 0-1.7 1l-2.5-1-2 3.5L4.6 11a7.5 7.5 0 0 0 0 2l-2.2 1.6 2 3.5 2.5-1c.5.4 1.1.7 1.7 1L9 21h4l.4-2.7c.6-.3 1.2-.6 1.7-1l2.5 1 2-3.5L19.4 13zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg><span data-t="Настройки"></span></button>
+    <div class="spacer"></div>
+    <button id="quitBtn"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 3h-2v10h2V3zm4.8 2.2-1.4 1.4A7 7 0 1 1 7.6 6.6L6.2 5.2A9 9 0 1 0 17.8 5.2z"/></svg><span data-t="Закрыть программу"></span></button>
+  </nav>
+  <main>
+    <!-- VPN -->
+    <div class="page" id="tab-vpn">
+      <div class="logo"><span class="l">Lite</span><span class="n">404</span><span class="v">VPN</span></div>
+      <div style="height:40px"></div>
+      <div class="cell"><span class="val" id="xTime">00:00:00</span><span class="lab" data-t="время подключения"></span></div>
+      <div style="height:18px"></div>
+      <div class="center small" id="days"></div>
+      <div style="height:16px"></div>
+      <button class="power" id="xPower"></button>
+      <div class="status" id="xStatus"></div>
+      <div class="center xs" style="color:var(--warn)" id="notice"></div>
+      <div style="height:18px"></div>
+      <div class="traffic">
+        <div class="grow"><div class="muted xs" data-t="Трафик"></div><div class="big" id="traffic">—</div></div>
+        <button class="iconbtn" id="refreshBtn" data-title="Обновить подписку"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.65 6.35A7.96 7.96 0 0 0 12 4a8 8 0 1 0 7.73 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg></button>
+      </div>
+      <div style="height:16px"></div>
+      <div class="row" style="padding:0 0 2px 4px">
+        <span class="muted small grow" data-t="Серверы"></span>
+        <button class="textbtn" id="pingBtn"></button>
+      </div>
+      <div id="servers"></div>
+    </div>
+
+    <!-- Резерв -->
+    <div class="page hidden" id="tab-wdtt">
+      <h1 data-t="Резервный VPN через VK"></h1>
+      <div class="muted small" data-t="Включайте, когда другие VPN не подключаются"></div>
+      <div style="height:12px"></div>
+      <div class="speed">
+        <div class="cell"><span class="val" id="wUp"></span><span class="lab">↑</span></div>
+        <div class="cell"><span class="val" id="wTime">00:00:00</span><span class="lab" data-t="время"></span></div>
+        <div class="cell"><span class="val" id="wDown"></span><span class="lab">↓</span></div>
+      </div>
+      <div style="height:28px"></div>
+      <button class="power" id="wPower"></button>
+      <div class="status" id="wStatus"></div>
+      <div class="center muted small" id="wStats"></div>
+      <div class="center hidden" id="noHash">
+        <div style="height:8px"></div>
+        <div class="err small" data-t="Хеш VK не задан. Добавьте его в боте и нажмите «Обновить подписку» на вкладке VPN."></div>
+        <a class="textbtn" href="https://t.me/lite404bot" target="_blank" data-t="Открыть бота"></a>
+      </div>
+      <div style="height:24px"></div>
+      <div class="picker"><div class="muted xs" data-t="Страна"></div><select id="country"></select></div>
+    </div>
+
+    <!-- Настройки -->
+    <div class="page hidden" id="tab-settings">
+      <h1 data-t="Настройки"></h1>
+      <div class="gap"></div>
+      <div class="section-title" data-t="Аккаунт"></div>
+      <div class="section">
+        <div id="account"></div>
+        <button class="textbtn danger" id="logoutBtn" data-t="Выйти из аккаунта"></button>
+      </div>
+      <div class="section-title" data-t="Язык"></div>
+      <div class="section"><button class="line-btn" id="langBtn"><span class="grow" style="text-align:start" data-t="Язык приложения"></span><span class="acc" id="langName"></span></button></div>
+
+      <div class="section-title" data-t="Основной VPN"></div>
+      <div class="section">
+        <div data-t="Маршрутизация"></div>
+        <div style="height:4px"></div>
+        <div class="opt" data-routing="smart"><span class="radio"></span><div><div class="t" data-t="Умная"></div><div class="muted xs" id="smartHint"></div></div></div>
+        <div class="opt" data-routing="off"><span class="radio"></span><div><div class="t" data-t="Всё через VPN"></div><div class="muted xs" data-t="Все сайты и программы — через VPN"></div></div></div>
+        <div style="height:6px"></div>
+        <div class="switch" data-switch="lanDirect"><span class="grow" data-t="Локальная сеть напрямую"></span><span class="toggle"></span></div>
+        <div class="muted xs" data-t="Роутер, принтер и другие устройства дома (192.168.x.x) — мимо VPN"></div>
+        <div style="height:6px"></div>
+        <div class="muted xs" data-t="Изменения применятся при следующем подключении."></div>
+      </div>
+
+      <div class="section-title" data-t="Пинг и проверка соединения"></div>
+      <div class="section">
+        <div class="switch" data-switch="pingOnOpen"><span class="grow" data-t="Пинговать серверы при открытии"></span><span class="toggle"></span></div>
+        <div class="switch" data-switch="testAfter"><span class="grow" data-t="Проверять интернет после подключения"></span><span class="toggle"></span></div>
+        <button class="line-btn" id="pingUrlBtn"><span class="grow" style="text-align:start" data-t="Адрес для проверки"></span><span class="acc small" id="pingUrlName"></span></button>
+        <div class="muted xs" data-t="Пинг — время полного запроса через сервер (подключение + ответ сайта), а не ICMP. Поэтому цифры выше, чем у обычного ping."></div>
+      </div>
+
+      <div class="section-title" data-t="Системный прокси"></div>
+      <div class="section">
+        <div class="switch" data-switch="systemProxy"><span class="grow" data-t="Включать системный прокси при подключении"></span><span class="toggle"></span></div>
+        <div class="muted xs" id="proxyHint"></div>
+        <div style="height:6px"></div>
+        <div class="muted xs"><span data-t="Для программ, которые не видят системный прокси:"></span> HTTP <span class="mono" id="httpAddr"></span>, SOCKS5 <span class="mono" id="socksAddr"></span></div>
+        <div class="err xs" id="proxyError"></div>
+      </div>
+
+      <div class="section-title" data-t="Резервный VPN"></div>
+      <div class="section">
+        <div class="switch" data-switch="lanWdtt"><span class="grow" data-t="Локальная сеть напрямую"></span><span class="toggle"></span></div>
+        <div class="muted xs" data-t="Роутер, принтер и другие устройства дома (192.168.x.x) — мимо VPN. Остальное всегда идёт через VPN."></div>
+        <div class="muted xs" data-t="Изменения применятся при следующем подключении."></div>
+        <button class="textbtn" id="logsBtn" style="margin-top:6px" data-t="Журнал резервного VPN"></button>
+      </div>
+
+      <div class="section-title" data-t="О приложении"></div>
+      <div class="section">
+        <div id="about"></div>
+        <div class="muted small" style="margin-top:4px" data-t="Основано на WDTT (amurcanov/proxy-turn-vk-android) и Xray-core."></div>
+        <a class="textbtn" href="https://github.com/Lite-404/lite404-vpn" target="_blank" data-t="Исходный код"></a>
+        <a class="textbtn" href="https://t.me/lite404bot" target="_blank" data-t="Бот @lite404bot"></a>
+      </div>
+    </div>
+
+    <!-- Журнал -->
+    <div class="page hidden" id="tab-logs">
+      <div class="row">
+        <button class="iconbtn" id="logsBack" style="color:var(--text)"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.8l5.6-5.6L12 4l-8 8 8 8 1.4-1.4L7.8 13H20z"/></svg></button>
+        <h1 class="grow" data-t="Журнал резервного VPN"></h1>
+        <button class="textbtn" id="logsClear" data-t="Очистить"></button>
+      </div>
+      <div class="gap"></div>
+      <div class="loglist" id="logs"></div>
+    </div>
+  </main>
+</div>
+
+<div id="dialog" class="dialog-bg hidden"><div class="dialog"><h3 id="dTitle"></h3><div id="dBody"></div><div class="acts" id="dActs"></div></div></div>
 <div id="toast"></div>
+
 <script>
 const $ = id => document.getElementById(id);
-let S = {}, selected = null, busy = false, toastTimer;
+const LANGS = [["ru","Русский"],["en","English"],["uk","Українська"],["kk","Қазақша"],["uz","Oʻzbekcha"],["tr","Türkçe"],["fa","فارسی"],["ar","العربية"],["zh","中文"],["es","Español"],["pt","Português"],["de","Deutsch"],["fr","Français"],["hi","हिन्दी"],["id","Bahasa Indonesia"]];
+let S = {}, dict = {}, lang = 'ru', tab = ['vpn', 'wdtt', 'settings'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'vpn', busy = false, toastTimer, loadedLang = null;
 
-function toast(text) {
-  if (!text) return;
-  $('toast').textContent = text; $('toast').classList.add('show');
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => $('toast').classList.remove('show'), 4500);
+// ── перевод: те же таблицы, что в Android-приложении (ключ — русский текст) ──
+function tr(key, ...args) { let s = dict[key] || key; for (const a of args) s = s.replace('%s', a); return s; }
+async function loadLang(code) {
+  const sys = (navigator.language || 'ru').slice(0, 2).toLowerCase();
+  lang = code || (LANGS.some(l => l[0] === sys) ? sys : 'en');
+  dict = {};
+  if (lang !== 'ru') {
+    try {
+      const text = await (await fetch('/i18n/' + lang + '.tsv')).text();
+      for (const line of text.split('\n')) { const i = line.indexOf('\t'); if (i > 0) dict[line.slice(0, i)] = line.slice(i + 1).replace(/\r$/, '').replace(/\\n/g, '\n'); }
+    } catch (e) {}
+  }
+  document.documentElement.lang = lang;
+  document.documentElement.dir = (lang === 'fa' || lang === 'ar') ? 'rtl' : 'ltr';
+  document.querySelectorAll('[data-t]').forEach(el => el.textContent = tr(el.dataset.t));
+  document.querySelectorAll('[data-title]').forEach(el => el.title = tr(el.dataset.title));
+  loadedLang = code || '';
 }
+
+function toast(text, kind = 'Info') {
+  if (!text) return;
+  const t = $('toast'); t.textContent = tr(text); t.className = 'show ' + kind;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.className = kind, kind === 'Error' ? 3500 : 2500);
+}
+function dialog(title, body, acts) {
+  $('dTitle').textContent = title;
+  const b = $('dBody'); b.innerHTML = ''; if (typeof body === 'string') b.textContent = body; else b.appendChild(body);
+  const a = $('dActs'); a.innerHTML = '';
+  for (const [label, fn, danger] of acts) {
+    const btn = document.createElement('button'); btn.textContent = label; if (danger) btn.style.color = 'var(--danger)';
+    btn.onclick = () => { $('dialog').classList.add('hidden'); fn && fn(); }; a.appendChild(btn);
+  }
+  $('dialog').classList.remove('hidden');
+}
+$('dialog').onclick = e => { if (e.target.id === 'dialog') $('dialog').classList.add('hidden'); };
+
 async function api(path, body) {
   const opts = body === undefined ? {} : { method:'POST', headers:{ 'X-Lite404':'1', 'Content-Type':'application/json' }, body:JSON.stringify(body) };
-  const r = await fetch('/api/' + path, opts);
-  const s = await r.json();
+  const s = await (await fetch('/api/' + path, opts)).json();
+  if (loadedLang === null || (s.lang || '') !== loadedLang) await loadLang(s.lang || '');
   render(s);
-  if (s.message) toast(s.message);
   return s;
 }
-function gb(b) { return (b / 1073741824).toFixed(b < 10737418240 ? 2 : 1) + ' ГБ'; }
-function pingText(ms) {
-  if (ms === undefined) return ['', ''];
-  if (ms < 0) return ['нет ответа', 'var(--danger)'];
-  return [ms + ' мс', ms < 250 ? 'var(--accent)' : ms < 600 ? 'var(--warn)' : 'var(--danger)'];
+
+const POWER_SVG = '<svg viewBox="0 0 56 56" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"><path d="M18 14.5A18 18 0 1 0 38 14.5"/><path d="M28 6.5V25"/></svg>';
+function bytes(b) {
+  b = b || 0;
+  if (b < 1024) return b + ' ' + tr('Б');
+  const u = [tr('КБ'), tr('МБ'), tr('ГБ'), tr('ТБ')]; let v = b / 1024, i = 0;
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+  return (v >= 100 ? v.toFixed(0) : v.toFixed(1)) + ' ' + u[i];
 }
+const speed = b => bytes(b) + tr('/с');
+function duration(ms) { const s = Math.max(0, Math.floor(ms / 1000)); const p = n => String(n).padStart(2, '0'); return p(Math.floor(s / 3600)) + ':' + p(Math.floor(s / 60) % 60) + ':' + p(s % 60); }
+function plural(n, one, few, many) { const m10 = n % 10, m100 = n % 100; return m10 === 1 && m100 !== 11 ? one : (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many); }
+
+function powerState(mode) {
+  if (S.mode !== mode) return 'off';
+  return S.phase === 'on' ? 'on' : (S.phase === 'connecting' || S.phase === 'stopping') ? 'connecting' : 'off';
+}
+function renderPower(el, st) {
+  el.className = 'power ' + st;
+  el.innerHTML = POWER_SVG + '<b>' + (st === 'on' ? 'ON' : st === 'connecting' ? '…' : 'OFF') + '</b>';
+  el.disabled = busy;
+}
+// строка под кнопкой — как StatusLine на Android
+function renderStatus(el, mode) {
+  el.innerHTML = '';
+  if (!S.mode && S.error && S.phase === 'off') { const s = document.createElement('span'); s.className = 'err'; s.textContent = tr('Ошибка: ') + tr(S.error); el.appendChild(s); return; }
+  if (S.mode && S.mode !== mode && S.phase !== 'off') {
+    const s = document.createElement('span'); s.className = 'muted';
+    s.textContent = mode === 'xray' ? tr('Сейчас включён резервный VPN. Нажмите кнопку — переключимся на обычный') : tr('Сейчас включён обычный VPN. Нажмите кнопку — переключимся на резервный');
+    el.appendChild(s); return;
+  }
+  if (S.mode === mode && S.phase === 'on') {
+    const t = S.test;
+    if (t) {
+      el.insertAdjacentHTML('beforeend', t.running ? '<span class="spin"></span>' : '<span style="color:' + (t.ok ? 'var(--accent)' : 'var(--danger)') + '">●</span>');
+      const s = document.createElement('span'); s.className = (t.ok || t.running) ? 'muted' : 'err';
+      s.textContent = tr(t.text, t.arg);
+      el.appendChild(s);
+    }
+    if (!t || !t.running) {
+      const b = document.createElement('button'); b.className = 'textbtn'; b.textContent = tr('Проверить');
+      b.onclick = () => api('check', {}); el.appendChild(b);
+    }
+  }
+}
+
 function render(s) {
   S = s;
-  $('ver').textContent = 'v' + s.version;
   $('login').classList.toggle('hidden', s.hasToken);
-  $('mainView').classList.toggle('hidden', !s.hasToken);
+  $('app').classList.toggle('hidden', !s.hasToken);
   if (!s.hasToken) return;
-  if (selected === null) selected = s.connected >= 0 ? s.connected : (s.server || 0);
-  const names = s.servers || [];
-  if (selected >= names.length) selected = 0;
+  document.querySelectorAll('nav [data-tab]').forEach(b => b.classList.toggle('on', b.dataset.tab === tab || (tab === 'logs' && b.dataset.tab === 'settings')));
+  for (const t of ['vpn', 'wdtt', 'settings', 'logs']) $('tab-' + t).classList.toggle('hidden', t !== tab);
+  const now = s.now;
 
-  const ring = $('power');
-  ring.className = 'ring ' + s.status;
-  ring.textContent = s.status === 'on' ? 'Отключить' : s.status === 'connecting' ? '…' : 'Подключить';
-  ring.disabled = busy || !names.length;
-  $('state').textContent = s.status === 'on' ? 'Подключено' : s.status === 'connecting' ? 'Подключение…' : 'Отключено';
-  $('stateHint').textContent = s.status === 'on' ? (names[s.connected] || '') : '';
-  $('notice').textContent = s.notice || '';
-
-  $('subError').textContent = s.error || '';
-  const list = $('servers'); list.innerHTML = '';
-  if (!names.length) list.innerHTML = '<p class="muted">Серверов пока нет — нажмите «Обновить»</p>';
-  names.forEach((name, i) => {
-    const d = document.createElement('div');
-    d.className = 'server' + (i === selected ? ' sel' : '');
-    const [t, c] = s.pinging && !(s.pings && i in s.pings) ? ['…', 'var(--muted)'] : pingText(s.pings ? s.pings[i] : undefined);
-    d.innerHTML = '<span></span><span class="ping"></span>';
-    d.firstChild.textContent = name + (i === s.connected ? '  ●' : '');
-    d.lastChild.textContent = t; d.lastChild.style.color = c;
-    d.onclick = () => choose(i);
-    list.appendChild(d);
-  });
-  $('pingBtn').disabled = s.pinging;
-
-  const u = s.user;
+  // ── VPN ──
+  $('xTime').textContent = s.mode === 'xray' && s.since ? duration(now - s.since) : '00:00:00';
+  const u = s.user, days = $('days');
   if (u) {
-    const parts = [];
-    parts.push(u.enabled ? 'Активна' : 'Выключена');
-    if (u.expires_at > 0) {
-      const exp = u.expires_at > 1e11 ? u.expires_at : u.expires_at * 1000, days = Math.ceil((exp - Date.now()) / 86400000);
-      parts.push('до ' + new Date(exp).toLocaleDateString('ru-RU') + (days >= 0 ? ' (' + days + ' дн.)' : ''));
-    } else parts.push('бессрочно');
-    parts.push('трафик: ' + gb(u.up + u.down) + (u.total > 0 ? ' из ' + gb(u.total) : ''));
-    if (u.devices_limit > 0) parts.push('устройств: ' + u.devices + ' из ' + u.devices_limit);
-    $('user').textContent = (u.name ? u.name + ' · ' : '') + parts.join(' · ');
+    if (!u.enabled) { days.textContent = tr('Подписка выключена'); days.style.color = 'var(--danger)'; }
+    else if (!(u.expires_at > 0)) { days.textContent = tr('Подписка бессрочная'); days.style.color = 'var(--muted)'; }
+    else {
+      const exp = u.expires_at > 1e11 ? u.expires_at : u.expires_at * 1000;
+      const d = Math.max(0, Math.floor((exp - Date.now()) / 86400000));
+      const date = new Date(exp).toLocaleDateString('ru-RU');
+      days.textContent = lang === 'ru' ? 'Осталось ' + d + ' ' + plural(d, 'день', 'дня', 'дней') + ' · до ' + date : tr('Осталось %s · до %s', d, date);
+      days.style.color = d <= 3 ? 'var(--warn)' : 'var(--muted)';
+    }
+    $('traffic').textContent = bytes(u.up + u.down) + ' / ' + (u.total > 0 ? bytes(u.total) : '∞');
   }
+  renderPower($('xPower'), powerState('xray'));
+  renderStatus($('xStatus'), 'xray');
+  $('notice').textContent = s.mode === 'xray' && s.notice ? tr(s.notice) : '';
+  $('refreshBtn').innerHTML = s.loading ? '<span class="spin"></span>' : $('refreshBtn').dataset.icon;
+  $('refreshBtn').disabled = s.loading;
+  const names = s.servers || [];
+  $('pingBtn').innerHTML = s.pinging ? '<span class="spin"></span>' : tr('Пинг');
+  $('pingBtn').disabled = s.pinging || !names.length;
+  const list = $('servers'); list.innerHTML = '';
+  if (!names.length) { const d = document.createElement('div'); d.className = 'muted'; d.style.padding = '4px'; d.textContent = tr('Нет серверов'); list.appendChild(d); }
+  names.forEach((name, i) => {
+    const row = document.createElement('div');
+    row.className = 'server' + (i === s.server ? ' sel' : '');
+    const n = document.createElement('span'); n.className = 'name'; n.textContent = name; row.appendChild(n);
+    const p = document.createElement('span'); p.className = 'ping';
+    const ms = s.pings ? s.pings[i] : undefined;
+    if (s.pinging && ms === undefined) p.innerHTML = '<span class="spin"></span>';
+    else if (ms === undefined) {}
+    else if (ms < 0) { p.textContent = tr('нет ответа'); p.style.color = 'var(--danger)'; }
+    else { p.textContent = tr('%s мс', ms); p.style.color = ms < 250 ? 'var(--accent)' : ms < 600 ? 'var(--warn)' : 'var(--danger)'; }
+    row.appendChild(p);
+    row.insertAdjacentHTML('beforeend', '<span class="radio' + (i === s.server ? ' on' : '') + '"></span>');
+    row.onclick = () => chooseServer(i);
+    list.appendChild(row);
+  });
 
-  document.querySelectorAll('input[name=routing]').forEach(r => r.checked = r.value === s.routing);
-  const smart = document.querySelector('input[value=smart]');
-  smart.disabled = !s.smartReady;
-  $('smartHint').textContent = s.smartReady ? 'Российские сайты — напрямую, реклама и торренты блокируются, остальное — через VPN' : 'Не настроено на сервере';
-  $('lanDirect').checked = s.lanDirect;
+  // ── Резерв ──
+  const wOn = s.mode === 'wdtt';
+  $('wUp').textContent = speed(wOn ? s.speedUp : 0);
+  $('wDown').textContent = speed(wOn ? s.speedDown : 0);
+  $('wTime').textContent = wOn && s.since ? duration(now - s.since) : '00:00:00';
+  renderPower($('wPower'), powerState('wdtt'));
+  renderStatus($('wStatus'), 'wdtt');
+  $('wStats').textContent = wOn && s.phase !== 'off' ? (s.wdttStats || '') : '';
+  $('noHash').classList.toggle('hidden', s.hasHash !== false);
+  const sel = $('country'), countries = s.countries || [];
+  if (sel.dataset.v !== JSON.stringify(countries)) {
+    sel.innerHTML = '';
+    (countries.length ? countries : ['—']).forEach((c, i) => { const o = document.createElement('option'); o.value = i; o.textContent = c; sel.appendChild(o); });
+    sel.dataset.v = JSON.stringify(countries);
+  }
+  if (document.activeElement !== sel) sel.value = Math.min(s.wdttServer, Math.max(countries.length - 1, 0));
+  sel.disabled = countries.length < 2;
 
-  $('sysProxy').checked = s.systemProxy;
-  $('proxyHint').textContent = s.proxyHint;
+  // ── Настройки ──
+  const acc = [];
+  if (u && u.name) acc.push([tr('Аккаунт'), u.name]);
+  if (u && u.devices_limit > 0) acc.push([tr('Устройства'), tr('%s из %s', u.devices, u.devices_limit)]);
+  fillInfo($('account'), acc);
+  $('langName').textContent = s.lang ? (LANGS.find(l => l[0] === s.lang) || [, s.lang])[1] : tr('Как в системе');
+  document.querySelectorAll('[data-routing]').forEach(o => {
+    const v = o.dataset.routing, enabled = v === 'off' || s.smartReady;
+    o.classList.toggle('dis', !enabled);
+    o.querySelector('.radio').className = 'radio' + (s.routing === v ? ' on' : '') + (enabled ? '' : ' off');
+    o.onclick = enabled ? () => api('settings', { routing:v }) : null;
+  });
+  $('smartHint').textContent = s.smartReady ? tr('Российские сайты — напрямую, реклама блокируется, остальное — через VPN') : tr('Не настроено на сервере');
+  document.querySelectorAll('[data-switch]').forEach(sw => {
+    const k = sw.dataset.switch;
+    sw.querySelector('.toggle').classList.toggle('on', !!s[k]);
+    sw.onclick = () => api('settings', { [k]: !s[k] });
+  });
+  $('pingUrlName').textContent = (s.pingUrl || '').replace('https://', '').split('/')[0];
+  $('proxyHint').textContent = tr(s.proxyHint);
   $('httpAddr').textContent = s.http; $('socksAddr').textContent = s.socks;
-  $('proxyError').textContent = s.proxyError || '';
-  if (document.activeElement !== $('pingUrl')) $('pingUrl').value = s.pingUrl;
+  $('proxyError').textContent = s.proxyError ? tr(s.proxyError) : '';
+  fillInfo($('about'), [[tr('Версия'), s.version], [tr('Ядро'), 'Xray ' + s.xrayVersion], [tr('Лицензия'), 'GPLv3']]);
 }
-async function choose(i) {
-  selected = i; render(S);
-  if (S.status === 'on' && S.connected !== i) await connect();
+function fillInfo(el, rows) {
+  el.innerHTML = '';
+  for (const [k, v] of rows) {
+    const d = document.createElement('div'); d.className = 'info';
+    d.innerHTML = '<span class="k"></span><span></span>'; d.firstChild.textContent = k; d.lastChild.textContent = v; el.appendChild(d);
+  }
 }
-async function connect() {
+
+async function act(fn) {
   busy = true; render(S);
-  try {
-    const s = await api('connect', { server:selected });
-    if (s.checkError) toast(s.checkError);
-    else if (s.check >= 0) toast('Соединение работает · ' + s.check + ' мс');
-  } finally { busy = false; render(S); }
+  try { const s = await fn(); if (s && s.message) toast(s.message, 'Error'); return s; } finally { busy = false; render(S); }
 }
-$('power').onclick = async () => {
-  if (S.status === 'on') { busy = true; try { await api('disconnect', {}); } finally { busy = false; render(S); } }
-  else await connect();
+function connectXray() {
+  const s = S;
+  if (s.subErrorCode === 'device_limit') return deviceLimit();
+  if (s.subErrorCode === 'expired') return toast('Подписка закончилась или выключена. Продлите её в боте', 'Error');
+  if (!(s.servers || []).length) return toast(s.subError || 'Нет серверов. Нажмите «Обновить подписку»', 'Error');
+  return act(() => api('connect', { mode:'xray', server:s.server }));
+}
+function connectWdtt() {
+  const s = S;
+  if (!s.wdttAvailable) return toast('Резервный VPN для этой системы пока недоступен', 'Error');
+  if (s.subErrorCode === 'expired') return toast('Подписка закончилась или выключена. Продлите её в боте', 'Error');
+  if (!s.hasHash) return toast('Добавьте хеш VK в боте', 'Error');
+  if (!(s.countries || []).length) return toast('Для вас нет серверов резервного VPN', 'Error');
+  return act(() => api('connect', { mode:'wdtt', server:Number($('country').value) || 0 }));
+}
+$('xPower').onclick = () => powerState('xray') !== 'off' ? act(() => api('disconnect', {})) : connectXray();
+$('wPower').onclick = () => powerState('wdtt') !== 'off' ? act(() => api('disconnect', {})) : connectWdtt();
+async function chooseServer(i) {
+  if (i === S.server) return;
+  await api('select', { mode:'xray', server:i });
+  if (S.mode === 'xray' && S.phase === 'on') connectXray(); // переподключение к новому серверу
+}
+$('country').onchange = async () => {
+  const i = Number($('country').value);
+  await api('select', { mode:'wdtt', server:i });
+  if (S.mode === 'wdtt' && S.phase === 'on') connectWdtt(); // включён — сразу переподключаемся к новой стране
 };
-$('loginBtn').onclick = async () => {
-  $('loginBtn').disabled = true;
-  try { const s = await api('token', { token:$('token').value }); if (!s.message) $('token').value = ''; }
-  finally { $('loginBtn').disabled = false; }
-};
+function deviceLimit() {
+  dialog(tr('Лимит устройств'), tr('На вашей подписке уже подключено максимум устройств. Откройте бота → «Устройства» и удалите ненужное, затем нажмите «Обновить подписку».'),
+    [[tr('Закрыть')], [tr('Открыть бота'), () => window.open('https://t.me/lite404bot')]]);
+}
+$('refreshBtn').dataset.icon = $('refreshBtn').innerHTML;
 $('refreshBtn').onclick = async () => {
-  $('refreshBtn').disabled = true;
-  try { const s = await api('refresh', {}); if (!s.message) toast('Список обновлён'); } finally { $('refreshBtn').disabled = false; }
+  const s = await act(() => api('refresh', {}));
+  if (s && !s.message && !s.subErrorCode) toast('Подписка обновлена', 'Success');
+  else if (s && s.subErrorCode === 'device_limit') deviceLimit();
 };
 $('pingBtn').onclick = () => api('ping', {});
-document.querySelectorAll('input[name=routing]').forEach(r => r.onchange = () => {
-  api('settings', { routing:r.value }); if (S.status === 'on') toast('Переподключитесь, чтобы применить');
-});
-$('lanDirect').onchange = () => { api('settings', { lanDirect:$('lanDirect').checked }); if (S.status === 'on') toast('Переподключитесь, чтобы применить'); };
-$('sysProxy').onchange = () => api('settings', { systemProxy:$('sysProxy').checked });
-$('pingUrlSave').onclick = () => api('settings', { pingUrl:$('pingUrl').value.trim() }).then(() => toast('Сохранено'));
-$('logoutBtn').onclick = () => { if (confirm('Выйти из аккаунта? VPN отключится, токен удалится с этого компьютера.')) api('logout', {}); };
-$('quitBtn').onclick = async () => {
-  await api('quit', {}).catch(() => {});
-  $('mainView').classList.add('hidden'); $('closed').classList.remove('hidden'); clearInterval(timer);
+$('pasteBtn').onclick = async () => { try { $('token').value = await navigator.clipboard.readText(); } catch (e) { $('token').focus(); } };
+$('loginBtn').onclick = async () => {
+  $('loginBtn').disabled = true;
+  try { const s = await api('token', { token:$('token').value }); if (s.message) toast(s.message, 'Error'); else $('token').value = ''; }
+  finally { $('loginBtn').disabled = false; }
 };
-const timer = setInterval(() => { if (!busy) api('state').catch(() => {}); }, 2000);
+document.querySelectorAll('nav [data-tab]').forEach(b => b.onclick = () => { tab = b.dataset.tab; render(S); });
+$('logoutBtn').onclick = () => dialog(tr('Выйти из аккаунта?'), tr('VPN отключится, данные подписки удалятся с компьютера. Чтобы войти снова, понадобится токен из бота.'),
+  [[tr('Отмена')], [tr('Выйти'), () => api('logout', {}), true]]);
+$('langBtn').onclick = () => {
+  const box = document.createElement('div');
+  for (const [code, name] of [['', tr('Как в системе')], ...LANGS]) {
+    const o = document.createElement('div'); o.className = 'opt';
+    o.innerHTML = '<span class="radio' + ((S.lang || '') === code ? ' on' : '') + '"></span><span></span>'; o.lastChild.textContent = name;
+    o.onclick = () => { $('dialog').classList.add('hidden'); api('settings', { lang:code }); };
+    box.appendChild(o);
+  }
+  dialog(tr('Язык приложения'), box, [[tr('Закрыть')]]);
+};
+$('pingUrlBtn').onclick = () => {
+  const box = document.createElement('div');
+  for (const u of S.pingUrls) {
+    const o = document.createElement('div'); o.className = 'opt';
+    o.innerHTML = '<span class="radio' + (S.pingUrl === u ? ' on' : '') + '"></span><span class="small"></span>'; o.lastChild.textContent = u.replace('https://', '');
+    o.onclick = () => { $('dialog').classList.add('hidden'); api('settings', { pingUrl:u }); };
+    box.appendChild(o);
+  }
+  dialog(tr('Адрес для проверки'), box, [[tr('Закрыть')]]);
+};
+async function loadLogs() {
+  const logs = await (await fetch('/api/logs')).json(), el = $('logs');
+  el.innerHTML = '';
+  if (!logs.length) { const d = document.createElement('div'); d.className = 'muted'; d.textContent = tr('Пусто'); el.appendChild(d); }
+  for (const l of logs) { const d = document.createElement('div'); d.textContent = l.text; d.style.color = l.error ? 'var(--danger)' : 'var(--text)'; el.appendChild(d); }
+}
+$('logsBtn').onclick = () => { tab = 'logs'; render(S); loadLogs(); };
+$('logsBack').onclick = () => { tab = 'settings'; render(S); };
+$('logsClear').onclick = async () => { await api('logs/clear', {}); loadLogs(); };
+$('quitBtn').onclick = () => dialog(tr('Закрыть программу?'), tr('VPN отключится, системный прокси снимется.'), [[tr('Отмена')], [tr('Закрыть'), async () => {
+  await api('quit', {}).catch(() => {}); clearInterval(timer);
+  document.body.innerHTML = '<div style="padding:40px;text-align:center;color:#8a8a90"></div>'; document.body.firstChild.textContent = tr('Программа закрыта. Эту вкладку можно закрыть.');
+}, true]]);
+const timer = setInterval(() => { if (!busy) api('state').catch(() => {}); if (tab === 'logs') loadLogs(); }, 1000);
 api('state');
 </script>
 </body>

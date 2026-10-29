@@ -1,100 +1,100 @@
-Ошибка сервера	Erro do servidor
-Нет связи с сервером: %s	Sem conexão com o servidor: %s
-Это не токен Lite 404. Он начинается с L404-	Isto não é um token Lite 404. Ele começa com L404-
-Лимит устройств	Limite de dispositivos
-На вашей подписке уже подключено максимум устройств. Откройте бота → «Устройства» и удалите ненужное, затем нажмите «Обновить подписку».	Sua assinatura já tem o máximo de dispositivos. Abra o bot → «Dispositivos», remova um que não usa e toque em «Atualizar assinatura».
-Открыть бота	Abrir bot
-Закрыть	Fechar
-Введите токен из бота	Digite o token do bot
-Вставить	Colar
-Войти	Entrar
-Токен выдаёт бот @lite404bot	O token é fornecido pelo bot @lite404bot
-время	tempo
-Не удалось подготовить конфиг: %s	Não foi possível preparar a configuração: %s
-время подключения	tempo de conexão
-Нет серверов. Нажмите «Обновить подписку»	Sem servidores. Toque em «Atualizar assinatura»
-Ошибка: 	Erro: 
-Трафик	Tráfego
-Подписка обновлена	Assinatura atualizada
-Обновить подписку	Atualizar assinatura
-Серверы	Servidores
-Нет серверов	Sem servidores
-Подписка выключена	Assinatura desativada
-Подписка бессрочная	Assinatura sem validade
-Осталось %s · до %s	Dias restantes: %s · até %s
-Добавьте хеш VK в боте	Adicione o hash do VK no bot
-Хеш VK не задан. Добавьте его в боте и нажмите «Обновить подписку» на вкладке VPN.	O hash do VK não está definido. Adicione-o no bot e toque em «Atualizar assinatura» na aba VPN.
-Страна	País
-Страна изменена. Включите туннель снова	País alterado. Ative o túnel novamente
+Ошибка сервера	Serverfehler
+Нет связи с сервером: %s	Keine Verbindung zum Server: %s
+Это не токен Lite 404. Он начинается с L404-	Das ist kein Lite-404-Token. Er beginnt mit L404-
+Лимит устройств	Gerätelimit
+На вашей подписке уже подключено максимум устройств. Откройте бота → «Устройства» и удалите ненужное, затем нажмите «Обновить подписку».	Ihr Abo hat bereits die maximale Anzahl an Geräten. Öffnen Sie den Bot → «Geräte», entfernen Sie ein nicht benötigtes Gerät und tippen Sie dann auf «Abo aktualisieren».
+Открыть бота	Bot öffnen
+Закрыть	Schließen
+Введите токен из бота	Geben Sie den Token aus dem Bot ein
+Вставить	Einfügen
+Войти	Anmelden
+Токен выдаёт бот @lite404bot	Den Token erhalten Sie im Bot @lite404bot
+время	Zeit
+Не удалось подготовить конфиг: %s	Konfiguration konnte nicht vorbereitet werden: %s
+время подключения	Verbindungsdauer
+Нет серверов. Нажмите «Обновить подписку»	Keine Server. Tippen Sie auf «Abo aktualisieren»
+Ошибка: 	Fehler: 
+Трафик	Datenvolumen
+Подписка обновлена	Abo aktualisiert
+Обновить подписку	Abo aktualisieren
+Серверы	Server
+Нет серверов	Keine Server
+Подписка выключена	Abo deaktiviert
+Подписка бессрочная	Abo ohne Ablaufdatum
+Осталось %s · до %s	Noch %s Tage · bis %s
+Добавьте хеш VK в боте	Fügen Sie Ihren VK-Hash im Bot hinzu
+Хеш VK не задан. Добавьте его в боте и нажмите «Обновить подписку» на вкладке VPN.	VK-Hash nicht festgelegt. Fügen Sie ihn im Bot hinzu und tippen Sie auf dem Tab VPN auf «Abo aktualisieren».
+Страна	Land
+Страна изменена. Включите туннель снова	Land geändert. Schalten Sie den Tunnel wieder ein
 Приложения	Apps
-Все приложения через VPN	Todos os apps pela VPN
-Все, кроме выбранных	Todos, exceto os escolhidos
-Только выбранные	Somente os escolhidos
-Выберите хотя бы одно приложение — пока все идут через VPN	Escolha pelo menos um app — por enquanto todos passam pela VPN
-Переподключите VPN, чтобы изменения заработали	Reconecte a VPN para aplicar as mudanças
-Поиск	Pesquisar
-Показывать системные	Mostrar apps do sistema
-выбрано: %s	escolhidos: %s
-Настройки	Configurações
-Язык	Idioma
-Язык приложения	Idioma do app
-Как в системе	Padrão do sistema
-Аккаунт	Conta
-Устройства	Dispositivos
-%s из %s	%s de %s
-Сервер	Servidor
-Выйти из аккаунта	Sair da conta
-Последний сбой	Última falha
-Отчёт скопирован	Relatório copiado
-Скопировать	Copiar
-Удалить	Excluir
-О приложении	Sobre
-Версия	Versão
-Ядро	Núcleo
-Лицензия	Licença
-Основано на WDTT (amurcanov/proxy-turn-vk-android) и Xray-core.	Baseado em WDTT (amurcanov/proxy-turn-vk-android) e Xray-core.
-Исходный код	Código-fonte
+Все приложения через VPN	Alle Apps über VPN
+Все, кроме выбранных	Alle außer ausgewählten
+Только выбранные	Nur ausgewählte
+Выберите хотя бы одно приложение — пока все идут через VPN	Wählen Sie mindestens eine App aus — vorerst laufen alle über VPN
+Переподключите VPN, чтобы изменения заработали	Verbinden Sie das VPN neu, um die Änderungen zu übernehmen
+Поиск	Suche
+Показывать системные	System-Apps anzeigen
+выбрано: %s	ausgewählt: %s
+Настройки	Einstellungen
+Язык	Sprache
+Язык приложения	App-Sprache
+Как в системе	Systemsprache
+Аккаунт	Konto
+Устройства	Geräte
+%s из %s	%s von %s
+Сервер	Server
+Выйти из аккаунта	Abmelden
+Последний сбой	Letzter Absturz
+Отчёт скопирован	Bericht kopiert
+Скопировать	Kopieren
+Удалить	Löschen
+О приложении	Über die App
+Версия	Version
+Ядро	Kern
+Лицензия	Lizenz
+Основано на WDTT (amurcanov/proxy-turn-vk-android) и Xray-core.	Basiert auf WDTT (amurcanov/proxy-turn-vk-android) und Xray-core.
+Исходный код	Quellcode
 Бот @lite404bot	Bot @lite404bot
-Выйти из аккаунта?	Sair da conta?
-VPN отключится, данные подписки удалятся с телефона. Чтобы войти снова, понадобится токен из бота.	A VPN será desligada e os dados da assinatura serão apagados do telefone. Para entrar de novo, você precisará de um token do bot.
-Выйти	Sair
-Отмена	Cancelar
-Очистить	Limpar
-Пусто	Vazio
+Выйти из аккаунта?	Abmelden?
+VPN отключится, данные подписки удалятся с телефона. Чтобы войти снова, понадобится токен из бота.	Das VPN wird getrennt und die Abodaten werden vom Gerät gelöscht. Um sich erneut anzumelden, benötigen Sie einen Token aus dem Bot.
+Выйти	Abmelden
+Отмена	Abbrechen
+Очистить	Leeren
+Пусто	Leer
 Б	B
 КБ	KB
 МБ	MB
 ГБ	GB
 ТБ	TB
 /с	/s
-Сервер %s	Servidor %s
-сертификат сервера не совпадает с токеном	o certificado do servidor não corresponde ao token
-Токен не подходит. Возьмите новый в боте @lite404bot	Token inválido. Pegue um novo no bot @lite404bot
-Слишком часто. Попробуйте через минуту	Muitas tentativas. Tente em um minuto
-Сервер ответил %s	O servidor respondeu %s
-Достигнут лимит устройств. Удалите ненужное устройство в боте	Limite de dispositivos atingido. Remova um dispositivo no bot
-Подписка закончилась или выключена. Продлите её в боте	A assinatura expirou ou foi desativada. Renove no bot
-На сервере выключена JSON-подписка (админу: wdtt doctor)	A assinatura JSON está desativada no servidor (admin: wdtt doctor)
-Сервер прислал непонятную подписку	O servidor enviou uma assinatura ilegível
-Ошибка подписки: %s	Erro de assinatura: %s
-Запуск...	Iniciando...
-Восстановление соединения...	Restaurando conexão...
-Подключение...	Conectando...
-Ожидание сети (Фоновый сон)	Aguardando rede (suspensão)
-Туннель активен	Túnel ativo
-Уведомление о работе туннеля	Notificação do túnel
-Отключить	Desconectar
-VPN включён	VPN ligada
-выбранные приложения не установлены — измените список на вкладке «Приложения»	os apps escolhidos não estão instalados — altere a lista na aba «Apps»
-нет разрешения на VPN	sem permissão de VPN
-Система не дала запустить туннель. Откройте приложение и попробуйте снова	O sistema não permitiu iniciar o túnel. Abra o app e tente novamente
+Сервер %s	Server %s
+сертификат сервера не совпадает с токеном	Das Serverzertifikat passt nicht zum Token
+Токен не подходит. Возьмите новый в боте @lite404bot	Token ist ungültig. Holen Sie sich einen neuen im Bot @lite404bot
+Слишком часто. Попробуйте через минуту	Zu häufig. Versuchen Sie es in einer Minute erneut
+Сервер ответил %s	Server antwortete %s
+Достигнут лимит устройств. Удалите ненужное устройство в боте	Gerätelimit erreicht. Entfernen Sie ein nicht benötigtes Gerät im Bot
+Подписка закончилась или выключена. Продлите её в боте	Abo abgelaufen oder deaktiviert. Verlängern Sie es im Bot
+На сервере выключена JSON-подписка (админу: wdtt doctor)	JSON-Abo ist auf dem Server deaktiviert (für Admin: wdtt doctor)
+Сервер прислал непонятную подписку	Der Server hat ein unlesbares Abo gesendet
+Ошибка подписки: %s	Abo-Fehler: %s
+Запуск...	Wird gestartet...
+Восстановление соединения...	Verbindung wird wiederhergestellt...
+Подключение...	Verbindung wird hergestellt...
+Ожидание сети (Фоновый сон)	Warten auf Netzwerk (Ruhemodus)
+Туннель активен	Tunnel aktiv
+Уведомление о работе туннеля	Benachrichtigung über den Tunnelstatus
+Отключить	Trennen
+VPN включён	VPN an
+выбранные приложения не установлены — измените список на вкладке «Приложения»	Ausgewählte Apps sind nicht installiert — ändern Sie die Liste auf dem Tab «Apps»
+нет разрешения на VPN	keine VPN-Berechtigung
+Система не дала запустить туннель. Откройте приложение и попробуйте снова	Das System hat den Start des Tunnels nicht erlaubt. Öffnen Sie die App und versuchen Sie es erneut
 Резервный VPN через VK	Reserve-VPN über VK
 Журнал резервного VPN	Protokoll des Reserve-VPN
 Резервный VPN	Reserve-VPN
-Для вас нет серверов резервного VPN	Für Sie gibt es keine Reserve-VPN-Server
-Сейчас включён резервный VPN. Нажмите кнопку — переключимся на обычный	Reserve-VPN ist aktiv. Tippen Sie auf die Taste, um zum normalen zu wechseln
-Сейчас включён обычный VPN. Нажмите кнопку — переключимся на резервный	Normales VPN ist aktiv. Tippen Sie auf die Taste, um zum Reserve-VPN zu wechseln
-Резервный VPN остановился. Подробности — в журнале (Настройки)	Reserve-VPN wurde gestoppt. Details im Protokoll (Einstellungen)
-Какие приложения идут через VPN. Действует и для обычного, и для резервного VPN	Welche Apps durch das VPN gehen. Gilt für normales und Reserve-VPN
+Для вас нет серверов резервного VPN	Keine Reserve-VPN-Server für Sie
+Сейчас включён резервный VPN. Нажмите кнопку — переключимся на обычный	Das Reserve-VPN ist an. Tippen Sie auf die Taste, um zum normalen zu wechseln
+Сейчас включён обычный VPN. Нажмите кнопку — переключимся на резервный	Das normale VPN ist an. Tippen Sie auf die Taste, um zum Reserve-VPN zu wechseln
+Резервный VPN остановился. Подробности — в журнале (Настройки)	Das Reserve-VPN wurde gestoppt. Details im Protokoll (Einstellungen)
+Какие приложения идут через VPN. Действует и для обычного, и для резервного VPN	Welche Apps über das VPN laufen. Gilt für das normale und das Reserve-VPN
 Резерв	Reserve
-Включайте, когда другие VPN не подключаются	Einschalten, wenn andere VPNs keine Verbindung herstellen
+Включайте, когда другие VPN не подключаются	Schalten Sie es ein, wenn andere VPNs keine Verbindung herstellen

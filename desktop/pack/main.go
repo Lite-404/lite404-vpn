@@ -86,22 +86,51 @@ func writeTarGz(path string, files []entry) {
 	gz.Close()
 }
 
+// prepare — то, что встраивается в программу: стоковый клиент WDTT под каждую систему
+// (как libclient.so в Android-приложении) и переводы интерфейса из Android-приложения.
+func prepare() {
+	os.MkdirAll("wdttbin", 0o755)
+	for _, t := range [][2]string{{"windows", "amd64"}, {"linux", "amd64"}, {"linux", "arm64"}, {"darwin", "amd64"}, {"darwin", "arm64"}} {
+		out, _ := filepath.Abs(fmt.Sprintf("wdttbin/wdtt-client-%s-%s", t[0], t[1]))
+		if t[0] == "windows" {
+			out += ".exe"
+		}
+		cmd := exec.Command("go", "build", "-trimpath", "-ldflags", "-s -w -checklinkname=0", "-o", out, ".")
+		cmd.Dir = "../core/wdtt-client"
+		cmd.Env = append(os.Environ(), "GOOS="+t[0], "GOARCH="+t[1], "CGO_ENABLED=0", "GOFLAGS=")
+		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+		if err := cmd.Run(); err != nil {
+			panic(fmt.Sprintf("клиент WDTT %s/%s: %v", t[0], t[1], err))
+		}
+	}
+	files, _ := filepath.Glob("../app/src/main/assets/i18n/*.tsv")
+	for _, f := range files {
+		data, _ := os.ReadFile(f)
+		// строки, которые есть только в версии для компьютера
+		if extra, err := os.ReadFile(filepath.Join("i18n-extra", filepath.Base(f))); err == nil {
+			data = append(append(data, 10), extra...)
+		}
+		os.WriteFile(filepath.Join("web/i18n", filepath.Base(f)), data, 0o644)
+	}
+}
+
 func main() {
 	version := os.Args[1]
+	prepare()
 	readme, _ := os.ReadFile("README.txt")
 	os.MkdirAll("dist/bin", 0o755)
 	tmp := func(name string) string { return filepath.Join("dist", "bin", name) }
 	readmeEntry := func(prefix string) entry { return entry{name: prefix + "README.txt", data: readme} }
 
 	exe := build("windows", "amd64", tmp("lite404.exe"), version)
-	writeZip(fmt.Sprintf("dist/Lite404-VPN-%s-windows-x64.zip", version), []entry{
+	writeZip(fmt.Sprintf("dist/Lite404-VPN-windows-x64.zip"), []entry{
 		{name: "Lite404 VPN/Lite404 VPN.exe", data: exe}, readmeEntry("Lite404 VPN/"),
 	})
 	for _, arch := range []string{"amd64", "arm64"} {
 		bin := build("linux", arch, tmp("lite404-linux-"+arch), version)
 		label := map[string]string{"amd64": "x64", "arm64": "arm64"}[arch]
 		dir := "lite404-vpn/"
-		writeTarGz(fmt.Sprintf("dist/Lite404-VPN-%s-linux-%s.tar.gz", version, label), []entry{
+		writeTarGz(fmt.Sprintf("dist/Lite404-VPN-linux-%s.tar.gz", label), []entry{
 			{name: dir + "lite404-vpn", data: bin, exec: true}, readmeEntry(dir),
 		})
 	}
@@ -109,7 +138,7 @@ func main() {
 		bin := build("darwin", arch, tmp("lite404-darwin-"+arch), version)
 		label := map[string]string{"amd64": "intel", "arm64": "apple-silicon"}[arch]
 		app := "Lite404 VPN.app/Contents/"
-		writeZip(fmt.Sprintf("dist/Lite404-VPN-%s-macos-%s.zip", version, label), []entry{
+		writeZip(fmt.Sprintf("dist/Lite404-VPN-macos-%s.zip", label), []entry{
 			{name: app + "MacOS/lite404", data: bin, exec: true},
 			{name: app + "Info.plist", data: []byte(fmt.Sprintf(plist, version, version))},
 			readmeEntry(""),
@@ -118,7 +147,7 @@ func main() {
 	os.RemoveAll("dist/bin")
 	list, _ := os.ReadDir("dist")
 	for _, e := range list {
-		if st, err := e.Info(); err == nil && strings.Contains(e.Name(), version) {
+		if st, err := e.Info(); err == nil && strings.HasPrefix(e.Name(), "Lite404-VPN-") {
 			fmt.Printf("%-48s %5.1f МБ\n", e.Name(), float64(st.Size())/1e6)
 		}
 	}

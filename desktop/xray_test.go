@@ -57,3 +57,39 @@ func TestLanDirectOff(t *testing.T) {
 		t.Fatalf("правило локальной сети осталось: %v", err)
 	}
 }
+
+// Конфиг в том виде, в каком его печатает клиент WDTT (ключи — тестовые).
+const testWG = `[Interface]
+MTU = 1280
+PrivateKey = yAnz5TF+lXXJte14tji3zlMNq+hd2rYUIgJBgB3fBmk=
+Address = 10.66.66.2/32
+DNS = 10.66.66.1
+
+[Peer]
+PublicKey = xTIBA5rboUvnH4htodjb6e697QjLERt1NAB4mZqp8Dg=
+PresharedKey = /UwcSPg38hW/D9Y3tcS1FOV0K1wuURMbS0sesJEP5ak=
+Endpoint = 127.0.0.1:9000
+AllowedIPs = 0.0.0.0/0, ::/0
+PersistentKeepalive = 25
+`
+
+func TestWireGuardFromWdtt(t *testing.T) {
+	server, err := WireGuardServer(testWG)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, lan := range []bool{true, false} {
+		cfg, err := BuildConfig(server, nil, lan)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(cfg), `"protocol":"wireguard"`) || !strings.Contains(string(cfg), "10.66.66.1") {
+			t.Fatalf("нет выхода WireGuard или DNS туннеля: %s", cfg)
+		}
+		inst, err := startInstance(cfg)
+		if err != nil {
+			t.Fatalf("Xray не принял WireGuard: %v", err)
+		}
+		inst.Close()
+	}
+}

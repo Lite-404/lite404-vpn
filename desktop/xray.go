@@ -9,11 +9,15 @@ import (
 	"io"
 	gonet "net"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/xtls/xray-core/common/net"
 	"github.com/xtls/xray-core/core"
+	"github.com/xtls/xray-core/features/stats"
 	"github.com/xtls/xray-core/infra/conf/serial"
 	_ "github.com/xtls/xray-core/main/distro/all" // регистрирует все протоколы и транспорты
 )
@@ -130,6 +134,12 @@ func BuildConfig(server json.RawMessage, profile obj, lanDirect bool) ([]byte, e
 	}
 	delete(root, "remarks")
 	root["log"] = obj{"loglevel": "warning", "access": "none"}
+	if os.Getenv("LITE404_DEBUG") != "" { // подробный журнал Xray для диагностики
+		root["log"] = obj{"loglevel": "debug", "error": filepath.Join(dataDir(), "xray.log")}
+	}
+	// счётчики входов — для скорости на вкладке «Резерв»
+	root["stats"] = obj{}
+	root["policy"] = obj{"system": obj{"statsInboundUplink": true, "statsInboundDownlink": true}}
 	sniff := obj{"enabled": true, "destOverride": []any{"http", "tls", "quic"}, "routeOnly": false}
 	root["inbounds"] = []any{
 		obj{"tag": "socks", "listen": "127.0.0.1", "port": socksPort, "protocol": "socks", "settings": obj{"udp": true}, "sniffing": sniff},
@@ -258,4 +268,101 @@ func Ping(server json.RawMessage, url string) int64 {
 		return -1
 	}
 	return ms
+}
+
+// Traffic — байты через локальные входы (отдано, получено) с момента подключения.
+func Traffic(inst *core.Instance) (up, down int64) {
+	m, ok := inst.GetFeature(stats.ManagerType()).(stats.Manager)
+	if !ok {
+		return 0, 0
+	}
+	for _, in := range []string{"socks", "http"} {
+		if c := m.GetCounter("inbound>>>" + in + ">>>traffic>>>uplink"); c != nil {
+			up += c.Value()
+		}
+		if c := m.GetCounter("inbound>>>" + in + ">>>traffic>>>downlink"); c != nil {
+			down += c.Value()
+		}
+	}
+	return
+}
+
+// WireGuardServer — WireGuard-конфиг от клиента WDTT → «сервер» в формате JSON-подписки:
+// один выход WireGuard внутри Xray (пользовательский стек, без драйвера и прав администратора).
+func WireGuardServer(conf string) (json.RawMessage, error) {
+	var section string
+	var secret, pub, psk, endpoint string
+	var addrs, dnsList []any
+	mtu, keepAlive := 1280, 25
+	for _, line := range strings.Split(conf, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "[") {
+			section = strings.ToLower(strings.Trim(line, "[]"))
+			continue
+		}
+		k, v, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		k, v = strings.ToLower(strings.TrimSpace(k)), strings.TrimSpace(v)
+		list := func() []any {
+			var out []any
+			for _, x := range strings.Split(v, ",") {
+				if x = strings.TrimSpace(x); x != "" {
+					out = append(out, x)
+				}
+			}
+			return out
+		}
+		switch section + "." + k {
+		case "interface.privatekey":
+			secret = v
+		case "interface.address":
+			for _, a := range list() {
+				if !strings.Contains(a.(string), ":") { // у серверов нет IPv6
+					addrs = append(addrs, a)
+				}
+			}
+		case "interface.dns":
+			for _, d := range list() {
+				if !strings.Contains(d.(string), ":") {
+					dnsList = append(dnsList, d)
+				}
+			}
+		case "interface.mtu":
+			if n, err := strconv.Atoi(v); err == nil && n >= 1280 {
+				mtu = n
+			}
+		case "peer.publickey":
+			pub = v
+		case "peer.presharedkey":
+			psk = v
+		case "peer.endpoint":
+			endpoint = v
+		case "peer.persistentkeepalive":
+			if n, err := strconv.Atoi(v); err == nil && n > 0 {
+				keepAlive = n
+			}
+		}
+	}
+	if secret == "" || pub == "" || endpoint == "" || len(addrs) == 0 {
+		return nil, errors.New("клиент резервного VPN прислал неполный конфиг")
+	}
+	if len(dnsList) == 0 {
+		dnsList = []any{"1.1.1.1"}
+	}
+	peer := obj{"publicKey": pub, "endpoint": endpoint, "keepAlive": keepAlive, "allowedIPs": []any{"0.0.0.0/0", "::/0"}}
+	if psk != "" {
+		peer["preSharedKey"] = psk
+	}
+	server := obj{
+		"remarks": "WDTT",
+		"dns":     obj{"servers": dnsList},
+		"outbounds": []any{obj{
+			"tag": "proxy", "protocol": "wireguard",
+			"settings": obj{"secretKey": secret, "address": addrs, "peers": []any{peer}, "mtu": mtu,
+				"noKernelTun": true, "domainStrategy": "ForceIPv4"},
+		}},
+	}
+	return json.Marshal(server)
 }

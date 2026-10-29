@@ -1,0 +1,100 @@
+Ошибка сервера	Server xatosi
+Нет связи с сервером: %s	Server bilan aloqa yoʻq: %s
+Это не токен Lite 404. Он начинается с L404-	Bu Lite 404 tokeni emas. U L404- bilan boshlanadi
+Лимит устройств	Qurilmalar chegarasi
+На вашей подписке уже подключено максимум устройств. Откройте бота → «Устройства» и удалите ненужное, затем нажмите «Обновить подписку».	Obunangizda qurilmalar soni maksimal. Botni oching → «Qurilmalar» boʻlimida keraksizini oʻchiring, soʻng «Obunani yangilash»ni bosing.
+Открыть бота	Botni ochish
+Закрыть	Yopish
+Введите токен из бота	Botdan olingan tokenni kiriting
+Вставить	Qoʻyish
+Войти	Kirish
+Токен выдаёт бот @lite404bot	Tokenni @lite404bot boti beradi
+время	vaqt
+Не удалось подготовить конфиг: %s	Konfigni tayyorlab boʻlmadi: %s
+время подключения	ulanish vaqti
+Нет серверов. Нажмите «Обновить подписку»	Serverlar yoʻq. «Obunani yangilash»ni bosing
+Ошибка: 	Xato: 
+Трафик	Trafik
+Подписка обновлена	Obuna yangilandi
+Обновить подписку	Obunani yangilash
+Серверы	Serverlar
+Нет серверов	Serverlar yoʻq
+Подписка выключена	Obuna oʻchirilgan
+Подписка бессрочная	Obuna muddatsiz
+Осталось %s · до %s	Qolgan kunlar: %s · %s gacha
+Добавьте хеш VK в боте	Botda VK xeshini qoʻshing
+Хеш VK не задан. Добавьте его в боте и нажмите «Обновить подписку» на вкладке VPN.	VK xeshi berilmagan. Uni botda qoʻshing va VPN yorligʻida «Obunani yangilash»ni bosing.
+Страна	Davlat
+Страна изменена. Включите туннель снова	Davlat oʻzgardi. Tunnelni qayta yoqing
+Приложения	Ilovalar
+Все приложения через VPN	Barcha ilovalar VPN orqali
+Все, кроме выбранных	Tanlanganlardan tashqari hammasi
+Только выбранные	Faqat tanlanganlar
+Выберите хотя бы одно приложение — пока все идут через VPN	Kamida bitta ilovani tanlang — hozircha hammasi VPN orqali oʻtadi
+Переподключите VPN, чтобы изменения заработали	Oʻzgarishlar ishlashi uchun VPN ni qayta ulang
+Поиск	Qidiruv
+Показывать системные	Tizim ilovalarini koʻrsatish
+выбрано: %s	tanlandi: %s
+Настройки	Sozlamalar
+Язык	Til
+Язык приложения	Ilova tili
+Как в системе	Tizimdagidek
+Аккаунт	Hisob
+Устройства	Qurilmalar
+%s из %s	%s / %s
+Сервер	Server
+Выйти из аккаунта	Hisobdan chiqish
+Последний сбой	Oxirgi nosozlik
+Отчёт скопирован	Hisobot nusxalandi
+Скопировать	Nusxalash
+Удалить	Oʻchirish
+О приложении	Ilova haqida
+Версия	Versiya
+Ядро	Yadro
+Лицензия	Litsenziya
+Основано на WDTT (amurcanov/proxy-turn-vk-android) и Xray-core.	WDTT (amurcanov/proxy-turn-vk-android) va Xray-core asosida.
+Исходный код	Manba kodi
+Бот @lite404bot	Bot @lite404bot
+Выйти из аккаунта?	Hisobdan chiqasizmi?
+VPN отключится, данные подписки удалятся с телефона. Чтобы войти снова, понадобится токен из бота.	VPN uziladi, obuna maʼlumotlari telefondan oʻchiriladi. Qayta kirish uchun botdan token kerak boʻladi.
+Выйти	Chiqish
+Отмена	Bekor qilish
+Очистить	Tozalash
+Пусто	Boʻsh
+Б	B
+КБ	KB
+МБ	MB
+ГБ	GB
+ТБ	TB
+/с	/s
+Сервер %s	Server %s
+сертификат сервера не совпадает с токеном	server sertifikati tokenga mos emas
+Токен не подходит. Возьмите новый в боте @lite404bot	Token yaroqsiz. @lite404bot botidan yangisini oling
+Слишком часто. Попробуйте через минуту	Juda tez-tez. Bir daqiqadan soʻng urinib koʻring
+Сервер ответил %s	Server javobi: %s
+Достигнут лимит устройств. Удалите ненужное устройство в боте	Qurilmalar chegarasiga yetildi. Botda keraksiz qurilmani oʻchiring
+Подписка закончилась или выключена. Продлите её в боте	Obuna tugagan yoki oʻchirilgan. Uni botda uzaytiring
+На сервере выключена JSON-подписка (админу: wdtt doctor)	Serverda JSON-obuna oʻchirilgan (admin uchun: wdtt doctor)
+Сервер прислал непонятную подписку	Server tushunarsiz obuna yubordi
+Ошибка подписки: %s	Obuna xatosi: %s
+Запуск...	Ishga tushirish...
+Восстановление соединения...	Ulanish tiklanmoqda...
+Подключение...	Ulanmoqda...
+Ожидание сети (Фоновый сон)	Tarmoq kutilmoqda (fon uyqusi)
+Туннель активен	Tunnel faol
+Уведомление о работе туннеля	Tunnel ishlashi haqida bildirishnoma
+Отключить	Uzish
+VPN включён	VPN yoqilgan
+выбранные приложения не установлены — измените список на вкладке «Приложения»	tanlangan ilovalar oʻrnatilmagan — «Ilovalar» yorligʻida roʻyxatni oʻzgartiring
+нет разрешения на VPN	VPN uchun ruxsat yoʻq
+Система не дала запустить туннель. Откройте приложение и попробуйте снова	Tizim tunnelni ishga tushirishga ruxsat bermadi. Ilovani oching va qayta urinib koʻring
+Резервный VPN через VK	VK orqali zaxira VPN
+Журнал резервного VPN	Zaxira VPN jurnali
+Резервный VPN	Zaxira VPN
+Для вас нет серверов резервного VPN	Siz uchun zaxira VPN serverlari yo'q
+Сейчас включён резервный VPN. Нажмите кнопку — переключимся на обычный	Hozir zaxira VPN yoqilgan. Oddiyga o'tish uchun tugmani bosing
+Сейчас включён обычный VPN. Нажмите кнопку — переключимся на резервный	Hozir oddiy VPN yoqilgan. Zaxiraga o'tish uchun tugmani bosing
+Резервный VPN остановился. Подробности — в журнале (Настройки)	Zaxira VPN to'xtadi. Tafsilotlar — jurnalda (Sozlamalar)
+Какие приложения идут через VPN. Действует и для обычного, и для резервного VPN	Qaysi ilovalar VPN orqali o'tadi. Oddiy va zaxira VPN uchun amal qiladi
+Резерв	Zaxira
+Включайте, когда другие VPN не подключаются	Boshqa VPN ulanmasa, yoqing

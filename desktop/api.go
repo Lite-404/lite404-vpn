@@ -54,8 +54,18 @@ type UserInfo struct {
 }
 
 // AppConfig — ответ /app/v1/config: обычные серверы (JSON-подписка 3x-ui), профили маршрутизации из панели.
+// WdttServer — страна резервного VPN: адрес ноды и пароль подключения (= UUID клиента в 3x-ui).
+type WdttServer struct {
+	Name     string `json:"name"`
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	Password string `json:"password"`
+}
+
 type AppConfig struct {
 	User    UserInfo                   `json:"user"`
+	VKHash  string                     `json:"vk_hash"`
+	Wdtt    []WdttServer               `json:"wdtt"`
 	Xray    []json.RawMessage          `json:"xray"`
 	Routing map[string]json.RawMessage `json:"routing"`
 	Error   string                     `json:"error"`
