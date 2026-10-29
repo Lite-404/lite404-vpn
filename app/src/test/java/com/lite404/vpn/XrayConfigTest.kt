@@ -65,8 +65,8 @@ class XrayConfigTest {
     }
 
     @Test
-    fun describe_isHumanReadable() {
-        val d = Routing.describe(profile("happ"))
-        assertTrue(d, d.contains("whitelist") && d.contains("torrent"))
+    fun lanDirectOff_noPrivateRule() {
+        val c = JSONObject(XrayConfig.build(server, null, lanDirect = false))
+        assertTrue(!c.getJSONObject("routing").getJSONArray("rules").toString().contains("192.168.0.0/16"))
     }
 }

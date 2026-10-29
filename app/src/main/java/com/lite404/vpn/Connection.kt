@@ -72,7 +72,7 @@ object Connection {
         run(ctx, ConnState(VpnMode.XRAY, Phase.CONNECTING)) { app ->
         val usable = profile?.takeIf { Routing.ensureGeo(app, it) }
         if (profile != null && usable == null) notice(tr("Не удалось скачать правила маршрутизации — сейчас всё идёт через VPN"))
-        val config = XrayConfig.build(server.config, usable)
+        val config = XrayConfig.build(server.config, usable, Prefs(app).lanDirectXray)
         if (WdttController.active()) {
             WdttController.stopAndWait(app)
             delay(600)   // система освобождает VPN-интерфейс WireGuard

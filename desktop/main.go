@@ -54,7 +54,7 @@ func (a *App) profile() obj {
 	if a.cfg == nil || a.s.Routing == "off" {
 		return nil
 	}
-	for _, name := range []string{a.s.Routing, "happ", "incy"} {
+	for _, name := range []string{"happ", "incy"} {
 		if raw, ok := a.cfg.Routing[name]; ok {
 			var p obj
 			if json.Unmarshal(raw, &p) == nil {
@@ -108,7 +108,7 @@ func (a *App) connect(i int) error {
 			notice = "Не удалось скачать правила маршрутизации — сейчас всё идёт через VPN"
 		}
 	}
-	cfg, err := BuildConfig(server, profile)
+	cfg, err := BuildConfig(server, profile, *a.s.LanDirect)
 	var inst *core.Instance
 	if err == nil {
 		inst, err = startInstance(cfg)
@@ -123,7 +123,7 @@ func (a *App) connect(i int) error {
 	a.s.Server = i
 	a.proxyErr = ""
 	if a.s.SystemProxy {
-		if perr := setSystemProxy(true); perr != nil {
+		if perr := setSystemProxy(true, *a.s.LanDirect); perr != nil {
 			a.proxyErr = "Системный прокси не включился — укажите вручную HTTP 127.0.0.1:10809"
 		} else {
 			a.s.ProxyActive = true
@@ -138,7 +138,7 @@ func (a *App) stopXray() {
 	inst := a.inst
 	a.inst, a.conn, a.status = nil, -1, "off"
 	if a.s.ProxyActive {
-		setSystemProxy(false)
+		setSystemProxy(false, false)
 		a.s.ProxyActive = false
 		a.s.save()
 	}
@@ -190,7 +190,7 @@ func (a *App) state() obj {
 	defer a.mu.Unlock()
 	st := obj{
 		"version": version, "status": a.status, "connected": a.conn, "notice": a.notice,
-		"hasToken": a.s.Token != "", "server": a.s.Server, "routing": a.s.Routing,
+		"hasToken": a.s.Token != "", "server": a.s.Server, "routing": a.s.Routing, "lanDirect": *a.s.LanDirect,
 		"systemProxy": a.s.SystemProxy, "pingUrl": a.s.PingURL, "pinging": a.pinging,
 		"pings": a.pings, "proxyHint": proxyHint, "proxyError": a.proxyErr,
 		"socks": fmt.Sprintf("127.0.0.1:%d", socksPort), "http": fmt.Sprintf("127.0.0.1:%d", httpPort),
@@ -206,59 +206,9 @@ func (a *App) state() obj {
 		st["servers"] = names
 		st["user"] = a.cfg.User
 		st["error"] = ErrorText(a.cfg.Error)
-		profiles, norm := obj{}, map[string]string{}
-		for name, raw := range a.cfg.Routing {
-			var p obj
-			if json.Unmarshal(raw, &p) == nil {
-				profiles[name] = describe(p)
-				n, _ := json.Marshal(p) // ключи по алфавиту — сравнение без учёта порядка
-				norm[name] = string(n)
-			}
-		}
-		st["profiles"] = profiles
-		st["sameProfiles"] = norm["happ"] != "" && norm["happ"] == norm["incy"]
+		st["smartReady"] = len(a.cfg.Routing) > 0
 	}
 	return st
-}
-
-// describe — «RoscomVPN Whitelist · напрямую: private, whitelist · …».
-func describe(p obj) string {
-	names := func(key string) string {
-		out := ""
-		for _, v := range list(p, key) {
-			s := fmt.Sprint(v)
-			if i := indexColon(s); i >= 0 {
-				s = s[i+1:]
-			}
-			if s != "" {
-				if out != "" {
-					out += ", "
-				}
-				out += s
-			}
-		}
-		return out
-	}
-	text := str(p, "Name", "Профиль из панели")
-	if s := names("DirectSites"); s != "" {
-		text += " · напрямую: " + s
-	}
-	if s := names("ProxySites"); s != "" {
-		text += " · через VPN: " + s
-	}
-	if s := names("BlockSites"); s != "" {
-		text += " · блокируются: " + s
-	}
-	return text
-}
-
-func indexColon(s string) int {
-	for i := range s {
-		if s[i] == ':' {
-			return i
-		}
-	}
-	return -1
 }
 
 func (a *App) handler() http.Handler {
@@ -348,7 +298,10 @@ func (a *App) handler() http.Handler {
 	mux.HandleFunc("POST /api/settings", func(w http.ResponseWriter, r *http.Request) {
 		m := body(r)
 		a.mu.Lock()
-		if v, ok := m["routing"].(string); ok && (v == "happ" || v == "incy" || v == "off") {
+		if v, ok := m["lanDirect"].(bool); ok {
+			a.s.LanDirect = &v
+		}
+		if v, ok := m["routing"].(string); ok && (v == "smart" || v == "off") {
 			a.s.Routing = v
 		}
 		if v, ok := m["pingUrl"].(string); ok && (len(v) > 8 && (v[:7] == "http://" || v[:8] == "https://")) {
@@ -357,10 +310,10 @@ func (a *App) handler() http.Handler {
 		if v, ok := m["systemProxy"].(bool); ok && v != a.s.SystemProxy {
 			a.s.SystemProxy = v
 			if a.status == "on" { // применяем сразу
-				if v && setSystemProxy(true) == nil {
+				if v && setSystemProxy(true, *a.s.LanDirect) == nil {
 					a.s.ProxyActive = true
 				} else if !v && a.s.ProxyActive {
-					setSystemProxy(false)
+					setSystemProxy(false, false)
 					a.s.ProxyActive = false
 				}
 			}
@@ -416,7 +369,7 @@ func main() {
 	a := &App{s: loadSettings(), conn: -1, status: "off"}
 	a.loadCached()
 	if a.s.ProxyActive || ourProxyActive() { // прошлый запуск завершился аварийно — прокси на нас висит без Xray
-		setSystemProxy(false)
+		setSystemProxy(false, false)
 		a.s.ProxyActive = false
 		a.s.save()
 	}

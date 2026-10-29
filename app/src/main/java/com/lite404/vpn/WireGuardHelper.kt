@@ -112,7 +112,8 @@ class WireGuardHelper(context: Context) {
             // добавляем отдельно, иначе запросы к нему ушли бы мимо туннеля
             val tunnelDns = parsedConfig.`interface`.dnsServers.mapNotNull { it.hostAddress }
                 .filter { ':' !in it }.map { "$it/32" }
-            peerBuilder.parseAllowedIPs((listOf(Lan.allowedIpsWithoutLan()) + tunnelDns).joinToString(", "))
+            val allowed = if (Prefs(appContext).lanDirectWdtt) listOf(Lan.allowedIpsWithoutLan()) + tunnelDns else listOf("0.0.0.0/0")
+            peerBuilder.parseAllowedIPs(allowed.joinToString(", "))
 
             val finalConfig = Config.Builder()
                 .setInterface(newInterface)

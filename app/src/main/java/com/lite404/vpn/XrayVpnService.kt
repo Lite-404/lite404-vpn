@@ -45,6 +45,7 @@ class XrayVpnService : VpnService() {
         const val EXTRA_APPS = "apps"
         const val EXTRA_TEST_URL = "test_url"
         const val EXTRA_TEST_AFTER = "test_after"
+        const val EXTRA_LAN_DIRECT = "lan_direct"
 
         /** Пауза после смены сети, чтобы не дёргать туннель на каждое мигание Wi-Fi. */
         private const val NETWORK_SETTLE_MS = 1500L
@@ -96,6 +97,7 @@ class XrayVpnService : VpnService() {
                 .putExtra(EXTRA_APPS, prefs.apps.toTypedArray())
                 .putExtra(EXTRA_TEST_URL, prefs.pingUrl)
                 .putExtra(EXTRA_TEST_AFTER, prefs.testAfterConnect)
+                .putExtra(EXTRA_LAN_DIRECT, prefs.lanDirectXray)
             if (Build.VERSION.SDK_INT >= 26) ctx.startForegroundService(i) else ctx.startService(i)
         }
 
@@ -136,6 +138,7 @@ class XrayVpnService : VpnService() {
 
     // параметры текущего запуска — нужны для пересборки туннеля при смене сети
     private var appsMode = "off"
+    private var lanDirect = true
     private var apps: List<String> = emptyList()
     private var testUrl = Prefs.DEFAULT_PING_URL
 
@@ -195,6 +198,7 @@ class XrayVpnService : VpnService() {
                 foreground(name)
                 appsMode = intent.getStringExtra(EXTRA_APPS_MODE) ?: "off"
                 apps = intent.getStringArrayExtra(EXTRA_APPS)?.toList() ?: emptyList()
+                lanDirect = intent.getBooleanExtra(EXTRA_LAN_DIRECT, true)
                 testUrl = intent.getStringExtra(EXTRA_TEST_URL) ?: Prefs.DEFAULT_PING_URL
                 val testAfter = intent.getBooleanExtra(EXTRA_TEST_AFTER, true)
                 bg.post {
@@ -238,7 +242,7 @@ class XrayVpnService : VpnService() {
             .addAddress("10.10.14.1", 30)
             .addDnsServer("1.1.1.1")
         // весь интернет, кроме локальной сети (192.168.x, 10.x, 172.16–31.x): к ней — напрямую, мимо VPN
-        for ((ip, prefix) in Lan.PUBLIC_IPV4) b.addRoute(ip, prefix)
+        if (lanDirect) for ((ip, prefix) in Lan.PUBLIC_IPV4) b.addRoute(ip, prefix) else b.addRoute("0.0.0.0", 0)
         // IPv6 тоже заворачиваем в туннель (иначе утечка мимо VPN); Xray отвечает на него отказом сразу
         runCatching { b.addAddress("fd66:6c34:3034::1", 126); b.addRoute("::", 0) }
         // туннелирование по приложениям; своё приложение всегда мимо VPN, иначе ядро Xray зациклится само на себя

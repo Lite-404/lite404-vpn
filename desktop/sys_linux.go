@@ -17,7 +17,7 @@ func machineID() string {
 
 // Системный прокси через gsettings (GNOME, Cinnamon, Budgie, MATE-приложения на GTK).
 // В других окружениях укажите прокси вручную: HTTP 127.0.0.1:10809 или SOCKS5 127.0.0.1:10808.
-func setSystemProxy(on bool) error {
+func setSystemProxy(on, lan bool) error {
 	if _, err := exec.LookPath("gsettings"); err != nil {
 		return err
 	}
@@ -33,7 +33,11 @@ func setSystemProxy(on bool) error {
 	g("org.gnome.system.proxy.https", "port", "10809")
 	g("org.gnome.system.proxy.socks", "host", "127.0.0.1")
 	g("org.gnome.system.proxy.socks", "port", "10808")
-	g("org.gnome.system.proxy", "ignore-hosts", "['localhost', '127.0.0.0/8', '::1', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '169.254.0.0/16', '*.local']")
+	ignore := "['localhost', '127.0.0.0/8', '::1', '*.local']"
+	if lan {
+		ignore = "['localhost', '127.0.0.0/8', '::1', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '169.254.0.0/16', '*.local']"
+	}
+	g("org.gnome.system.proxy", "ignore-hosts", ignore)
 	return g("org.gnome.system.proxy", "mode", "manual")
 }
 

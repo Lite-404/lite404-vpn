@@ -18,7 +18,8 @@ type Settings struct {
 	Token       string          `json:"token"`
 	Config      json.RawMessage `json:"config,omitempty"` // последний ответ сервера — чтобы работать без связи с ним
 	Server      int             `json:"server"`
-	Routing     string          `json:"routing"`      // happ | incy | off
+	Routing     string          `json:"routing"`      // smart | off
+	LanDirect   *bool           `json:"lan_direct"`   // локальная сеть мимо VPN (nil — по умолчанию да)
 	SystemProxy bool            `json:"system_proxy"` // включать системный прокси при подключении
 	PingURL     string          `json:"ping_url"`
 	ProxyActive bool            `json:"proxy_active"` // прокси включён нами — снять после аварийного выхода
@@ -35,9 +36,16 @@ func dataDir() string {
 }
 
 func loadSettings() *Settings {
-	s := &Settings{Routing: "happ", SystemProxy: true, PingURL: "https://www.gstatic.com/generate_204"}
+	s := &Settings{Routing: "smart", SystemProxy: true, PingURL: "https://www.gstatic.com/generate_204"}
 	if data, err := os.ReadFile(filepath.Join(dataDir(), "settings.json")); err == nil {
 		json.Unmarshal(data, s)
+	}
+	if s.Routing != "off" {
+		s.Routing = "smart"
+	}
+	if s.LanDirect == nil {
+		t := true
+		s.LanDirect = &t
 	}
 	return s
 }

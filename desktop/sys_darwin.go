@@ -28,7 +28,7 @@ func networkServices() []string {
 	return list
 }
 
-func setSystemProxy(on bool) error {
+func setSystemProxy(on, lan bool) error {
 	var err error
 	for _, svc := range networkServices() {
 		run := func(args ...string) {
@@ -40,7 +40,11 @@ func setSystemProxy(on bool) error {
 			run("-setwebproxy", svc, "127.0.0.1", "10809")
 			run("-setsecurewebproxy", svc, "127.0.0.1", "10809")
 			run("-setsocksfirewallproxy", svc, "127.0.0.1", "10808")
-			run("-setproxybypassdomains", svc, "localhost", "127.0.0.1", "*.local", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16")
+			bypass := []string{"-setproxybypassdomains", svc, "localhost", "127.0.0.1", "*.local"}
+			if lan {
+				bypass = append(bypass, "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16")
+			}
+			run(bypass...)
 		} else {
 			run("-setwebproxystate", svc, "off")
 			run("-setsecurewebproxystate", svc, "off")

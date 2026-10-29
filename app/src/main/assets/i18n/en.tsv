@@ -121,14 +121,14 @@ Android может усыплять VPN при выключенном экран
 Резерв	Backup
 Включайте, когда другие VPN не подключаются	Turn it on when other VPNs don't connect
 Маршрутизация	Routing
-Умная, как в Happ	Smart, like in Happ
-Умная, как в INCY	Smart, like in INCY
 Всё через VPN	Everything through VPN
-Кроме локальной сети	Except the local network
+Основной VPN	Main VPN
+Умная	Smart
+Российские сайты — напрямую, реклама и торренты блокируются, остальное — через VPN	Russian sites go direct, ads and torrents are blocked, everything else goes through the VPN
+Все сайты и приложения — через VPN	All sites and apps go through the VPN
+Локальная сеть напрямую	Local network directly
+Роутер, принтер и другие устройства дома (192.168.x.x) — мимо VPN	Router, printer and other home devices (192.168.x.x) bypass the VPN
+Роутер, принтер и другие устройства дома (192.168.x.x) — мимо VPN. Остальное всегда идёт через VPN.	Router, printer and other home devices (192.168.x.x) bypass the VPN. Everything else always goes through the VPN.
+Изменения применятся при следующем подключении.	Changes apply on the next connection.
 Не настроено на сервере	Not configured on the server
-Локальная сеть (роутер, принтер, 192.168.x.x) всегда работает напрямую. Новый режим применится при следующем подключении.	The local network (router, printer, 192.168.x.x) always works directly. A new mode applies on the next connection.
-Профиль из панели	Panel profile
-напрямую: %s	direct: %s
-через VPN: %s	via VPN: %s
-блокируются: %s	blocked: %s
 Не удалось скачать правила маршрутизации — сейчас всё идёт через VPN	Could not download routing rules — everything goes through the VPN for now

@@ -72,11 +72,10 @@
 
     <section class="card">
       <h2>Маршрутизация</h2>
-      <label class="opt"><input type="radio" name="routing" value="happ"><span>Умная, как в Happ</span></label>
-      <label class="opt" id="incyOpt"><input type="radio" name="routing" value="incy"><span>Умная, как в INCY</span></label>
-      <label class="opt"><input type="radio" name="routing" value="off"><span>Всё через VPN</span></label>
-      <div class="muted" id="routingHint"></div>
-      <p class="muted">Локальная сеть (роутер, принтер, 192.168.x.x) всегда работает напрямую. Изменения — со следующего подключения.</p>
+      <label class="opt"><input type="radio" name="routing" value="smart"><span>Умная<br><span class="muted" id="smartHint"></span></span></label>
+      <label class="opt"><input type="radio" name="routing" value="off"><span>Всё через VPN<br><span class="muted">Все сайты и программы — через VPN</span></span></label>
+      <label class="opt"><input type="checkbox" id="lanDirect"><span>Локальная сеть напрямую<br><span class="muted">Роутер, принтер и другие устройства дома (192.168.x.x) — мимо VPN</span></span></label>
+      <p class="muted">Изменения применятся при следующем подключении.</p>
     </section>
 
     <section class="card">
@@ -171,11 +170,10 @@ function render(s) {
   }
 
   document.querySelectorAll('input[name=routing]').forEach(r => r.checked = r.value === s.routing);
-  const profiles = s.profiles || {};
-  $('incyOpt').classList.toggle('hidden', !!s.sameProfiles || !profiles.incy);
-  if (s.sameProfiles && s.routing === 'incy') document.querySelector('input[value=happ]').checked = true;
-  const p = s.routing === 'off' ? null : (profiles[s.routing] || profiles.happ || profiles.incy);
-  $('routingHint').textContent = s.routing === 'off' ? 'Все сайты идут через VPN' : (p || 'Профиль маршрутизации ещё не получен — нажмите «Обновить»');
+  const smart = document.querySelector('input[value=smart]');
+  smart.disabled = !s.smartReady;
+  $('smartHint').textContent = s.smartReady ? 'Российские сайты — напрямую, реклама и торренты блокируются, остальное — через VPN' : 'Не настроено на сервере';
+  $('lanDirect').checked = s.lanDirect;
 
   $('sysProxy').checked = s.systemProxy;
   $('proxyHint').textContent = s.proxyHint;
@@ -212,6 +210,7 @@ $('pingBtn').onclick = () => api('ping', {});
 document.querySelectorAll('input[name=routing]').forEach(r => r.onchange = () => {
   api('settings', { routing:r.value }); if (S.status === 'on') toast('Переподключитесь, чтобы применить');
 });
+$('lanDirect').onchange = () => { api('settings', { lanDirect:$('lanDirect').checked }); if (S.status === 'on') toast('Переподключитесь, чтобы применить'); };
 $('sysProxy').onchange = () => api('settings', { systemProxy:$('sysProxy').checked });
 $('pingUrlSave').onclick = () => api('settings', { pingUrl:$('pingUrl').value.trim() }).then(() => toast('Сохранено'));
 $('logoutBtn').onclick = () => { if (confirm('Выйти из аккаунта? VPN отключится, токен удалится с этого компьютера.')) api('logout', {}); };

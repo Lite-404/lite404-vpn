@@ -30,7 +30,7 @@ func TestBuildConfigStartsXray(t *testing.T) {
 			}
 			json.Unmarshal(data, &profile)
 		}
-		cfg, err := BuildConfig(json.RawMessage(testServer), profile)
+		cfg, err := BuildConfig(json.RawMessage(testServer), profile, true)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -48,5 +48,12 @@ func TestBuildConfigStartsXray(t *testing.T) {
 			}
 			inst.Close()
 		}
+	}
+}
+
+func TestLanDirectOff(t *testing.T) {
+	cfg, err := BuildConfig(json.RawMessage(testServer), nil, false)
+	if err != nil || strings.Contains(string(cfg), "192.168.0.0/16") {
+		t.Fatalf("правило локальной сети осталось: %v", err)
 	}
 }

@@ -10,38 +10,25 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * Маршрутизация «как в Happ / INCY»: профиль приходит из панели 3x-ui (настройки подписки для Happ и INCY)
+ * Умная маршрутизация: профиль приходит из панели 3x-ui (настройки подписки, профили happ/incy)
  * через API приложения. Формат — тот же JSON, что в ссылке happ://routing/…:
  *   DirectSites/DirectIp — напрямую, ProxySites/ProxyIp — через VPN, BlockSites/BlockIp — блокировать,
  *   RouteOrder ("block-proxy-direct") — порядок групп, DomainStrategy, DNS (RemoteDNS*, DomesticDNS*, DnsHosts),
  *   Geoipurl/Geositeurl — свои geo-файлы (категории вроде geosite:whitelist есть только в них).
  */
 object Routing {
-    const val MODE_HAPP = "happ"
-    const val MODE_INCY = "incy"
+    const val MODE_SMART = "smart"
     const val MODE_OFF = "off"
 
     private const val GEOIP = "roscom-geoip.dat"
     private const val GEOSITE = "roscom-geosite.dat"
     private const val REFRESH_MS = 24 * 3600 * 1000L
 
-    /** Профиль для выбранного режима; null — «всё через VPN». Если выбранного нет в панели — берём другой. */
+    /** Профиль для режима; null — «всё через VPN» (или на сервере профиль не настроен). */
     fun profile(config: AppConfig?, mode: String): JSONObject? {
         if (mode == MODE_OFF) return null
         val all = config?.routing ?: return null
-        return all[mode] ?: all[MODE_HAPP] ?: all[MODE_INCY]
-    }
-
-    /** Короткое описание профиля для настроек: «RoscomVPN Whitelist · напрямую: private, whitelist · …». */
-    fun describe(profile: JSONObject): String {
-        fun names(key: String) = profile.optJSONArray(key)?.let { a ->
-            (0 until a.length()).map { a.optString(it).substringAfter(':') }.filter { it.isNotBlank() }
-        } ?: emptyList()
-        val parts = mutableListOf(profile.optString("Name").ifBlank { tr("Профиль из панели") })
-        names("DirectSites").takeIf { it.isNotEmpty() }?.let { parts += tr("напрямую: %s", it.joinToString(", ")) }
-        names("ProxySites").takeIf { it.isNotEmpty() }?.let { parts += tr("через VPN: %s", it.joinToString(", ")) }
-        names("BlockSites").takeIf { it.isNotEmpty() }?.let { parts += tr("блокируются: %s", it.joinToString(", ")) }
-        return parts.joinToString(" · ")
+        return all["happ"] ?: all["incy"]
     }
 
     /**

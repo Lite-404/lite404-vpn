@@ -56,10 +56,19 @@ class Prefs(ctx: Context) {
         get() = p.getBoolean("test_after_connect", true)
         set(v) = p.edit().putBoolean("test_after_connect", v).apply()
 
-    /** Маршрутизация обычного VPN: "happ" | "incy" (профили из панели) | "off" — всё через VPN. */
+    /** Маршрутизация основного VPN: "smart" — правила с сервера, "off" — всё через VPN. */
     var routingMode: String
-        get() = p.getString("routing_mode", Routing.MODE_HAPP) ?: Routing.MODE_HAPP
+        get() = if (p.getString("routing_mode", Routing.MODE_SMART) == Routing.MODE_OFF) Routing.MODE_OFF else Routing.MODE_SMART
         set(v) = p.edit().putString("routing_mode", v).apply()
+
+    /** Локальная сеть (192.168.x.x и др.) мимо VPN — отдельно для основного и резервного VPN. */
+    var lanDirectXray: Boolean
+        get() = p.getBoolean("lan_direct_xray", true)
+        set(v) = p.edit().putBoolean("lan_direct_xray", v).apply()
+
+    var lanDirectWdtt: Boolean
+        get() = p.getBoolean("lan_direct_wdtt", true)
+        set(v) = p.edit().putBoolean("lan_direct_wdtt", v).apply()
 
     /** Предлагали ли уже снять ограничение батареи (чтобы не спрашивать каждый раз). */
     var batteryAsked: Boolean

@@ -8,10 +8,11 @@ object XrayConfig {
     const val MTU = 1500
 
     /**
-     * [profile] — профиль маршрутизации «как в Happ/INCY» (null — всё через VPN). Его geo-файлы
+     * [profile] — профиль умной маршрутизации (null — всё через VPN). Его geo-файлы
      * должны быть уже скачаны ([Routing.ensureGeo]), иначе передавайте null.
+     * [lanDirect] — локальная сеть мимо VPN (TUN её и не получает, см. [Lan]).
      */
-    fun build(serverJson: String, profile: JSONObject? = null): String {
+    fun build(serverJson: String, profile: JSONObject? = null, lanDirect: Boolean = true): String {
         val root = JSONObject(serverJson)
         root.remove("remarks")
         // журнал каждого соединения (access) на телефоне только тратит процессор и батарею
@@ -36,7 +37,7 @@ object XrayConfig {
         // DNS-запросы из TUN — во встроенный DNS Xray (он ходит к серверам DNS через прокси)
         rules.put(JSONObject("""{"type":"field","inboundTag":["tun"],"port":"53","outboundTag":"dns-out"}"""))
         // локальная сеть (192.168.x и т.п.) — напрямую; обычно она и так не попадает в туннель (см. Lan)
-        rules.put(JSONObject().put("type", "field").put("ip", JSONArray(Lan.PRIVATE_CIDRS)).put("outboundTag", "direct"))
+        if (lanDirect) rules.put(JSONObject().put("type", "field").put("ip", JSONArray(Lan.PRIVATE_CIDRS)).put("outboundTag", "direct"))
         // IPv6 серверы не умеют: отказываем сразу, иначе каждое соединение ждёт неудачной попытки по IPv6
         rules.put(JSONObject("""{"type":"field","ip":["::/0"],"outboundTag":"ipv6-block"}"""))
         if (profile != null) {

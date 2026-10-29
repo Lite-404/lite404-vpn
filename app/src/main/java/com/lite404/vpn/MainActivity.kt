@@ -829,20 +829,17 @@ private fun SettingsTab(model: AppModel) {
                 Text(current, color = Accent, fontSize = 15.sp)
             }
         }
-        Section(tr("Маршрутизация")) {
+        Section(tr("Основной VPN")) {
             var mode by remember { mutableStateOf(model.prefs.routingMode) }
-            val available = model.config?.routing ?: emptyMap()
-            // описание — из самого профиля в панели (его меняют без обновления приложения); одинаковые не дублируем
-            val happ = available[Routing.MODE_HAPP]
-            val incy = available[Routing.MODE_INCY]?.takeIf { it.toString() != happ?.toString() }
-            val options = buildList {
-                add(Triple(Routing.MODE_HAPP, tr("Умная, как в Happ"), happ?.let { Routing.describe(it) } ?: ""))
-                if (incy != null || happ == null) add(Triple(Routing.MODE_INCY, tr("Умная, как в INCY"), incy?.let { Routing.describe(it) } ?: ""))
-                add(Triple(Routing.MODE_OFF, tr("Всё через VPN"), tr("Кроме локальной сети")))
-            }
-            if (mode == Routing.MODE_INCY && options.none { it.first == Routing.MODE_INCY }) mode = Routing.MODE_HAPP
-            for ((value, title, hint) in options) {
-                val enabled = value == Routing.MODE_OFF || value in available
+            var lan by remember { mutableStateOf(model.prefs.lanDirectXray) }
+            val smartReady = Routing.profile(model.config, Routing.MODE_SMART) != null
+            Text(tr("Маршрутизация"), fontSize = 15.sp)
+            Spacer(Modifier.height(4.dp))
+            for ((value, title, hint) in listOf(
+                Triple(Routing.MODE_SMART, tr("Умная"), if (smartReady) tr("Российские сайты — напрямую, реклама и торренты блокируются, остальное — через VPN") else tr("Не настроено на сервере")),
+                Triple(Routing.MODE_OFF, tr("Всё через VPN"), tr("Все сайты и приложения — через VPN")),
+            )) {
+                val enabled = value == Routing.MODE_OFF || smartReady
                 Row(
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
                         .clickable(enabled = enabled) { mode = value; model.prefs.routingMode = value }.padding(vertical = 6.dp),
@@ -852,11 +849,15 @@ private fun SettingsTab(model: AppModel) {
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text(title, fontSize = 15.sp, color = if (enabled) Color.Unspecified else Muted)
-                        Text(if (enabled) hint else tr("Не настроено на сервере"), color = Muted, fontSize = 12.sp)
+                        Text(hint, color = Muted, fontSize = 12.sp)
                     }
                 }
             }
-            Text(tr("Локальная сеть (роутер, принтер, 192.168.x.x) всегда работает напрямую. Новый режим применится при следующем подключении."), color = Muted, fontSize = 12.sp)
+            Spacer(Modifier.height(6.dp))
+            SwitchLine(tr("Локальная сеть напрямую"), lan) { lan = it; model.prefs.lanDirectXray = it }
+            Text(tr("Роутер, принтер и другие устройства дома (192.168.x.x) — мимо VPN"), color = Muted, fontSize = 12.sp)
+            Spacer(Modifier.height(6.dp))
+            Text(tr("Изменения применятся при следующем подключении."), color = Muted, fontSize = 12.sp)
         }
         Section(tr("Пинг и проверка соединения")) {
             var pingOnOpen by remember { mutableStateOf(model.prefs.pingOnOpen) }
@@ -904,6 +905,10 @@ private fun SettingsTab(model: AppModel) {
             if (!unrestricted) TextButton(onClick = { Battery.request(ctx) }) { Text(tr("Разрешить работу в фоне")) }
         }
         Section(tr("Резервный VPN")) {
+            var lan by remember { mutableStateOf(model.prefs.lanDirectWdtt) }
+            SwitchLine(tr("Локальная сеть напрямую"), lan) { lan = it; model.prefs.lanDirectWdtt = it }
+            Text(tr("Роутер, принтер и другие устройства дома (192.168.x.x) — мимо VPN. Остальное всегда идёт через VPN."), color = Muted, fontSize = 12.sp)
+            Text(tr("Изменения применятся при следующем подключении."), color = Muted, fontSize = 12.sp)
             TextButton(onClick = { showLogs = true }) { Text(tr("Журнал резервного VPN")) }
         }
         var crash by remember { mutableStateOf(CrashLog.read(ctx)) }

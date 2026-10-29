@@ -20,7 +20,8 @@ func machineID() string {
 }
 
 // Системный прокси Windows (его используют браузеры, Telegram Desktop, большинство программ).
-func setSystemProxy(on bool) error {
+// lan — локальная сеть мимо прокси.
+func setSystemProxy(on, lan bool) error {
 	k, err := registry.OpenKey(registry.CURRENT_USER, inetKey, registry.SET_VALUE)
 	if err != nil {
 		return err
@@ -28,7 +29,11 @@ func setSystemProxy(on bool) error {
 	defer k.Close()
 	if on {
 		k.SetStringValue("ProxyServer", "127.0.0.1:10809")
-		k.SetStringValue("ProxyOverride", "localhost;127.*;10.*;172.16.*;172.17.*;172.18.*;172.19.*;172.2*;172.30.*;172.31.*;192.168.*;169.254.*;<local>")
+		bypass := "localhost;127.*;<local>"
+		if lan {
+			bypass = "localhost;127.*;10.*;172.16.*;172.17.*;172.18.*;172.19.*;172.2*;172.30.*;172.31.*;192.168.*;169.254.*;<local>"
+		}
+		k.SetStringValue("ProxyOverride", bypass)
 		k.SetDWordValue("ProxyEnable", 1)
 	} else {
 		k.SetDWordValue("ProxyEnable", 0)

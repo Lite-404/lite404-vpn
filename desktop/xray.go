@@ -122,8 +122,8 @@ func profileDNS(p obj) obj {
 }
 
 // BuildConfig — конфиг сервера из JSON-подписки → локальный прокси SOCKS/HTTP с маршрутизацией.
-// profile == nil — всё через VPN (кроме локальной сети).
-func BuildConfig(server json.RawMessage, profile obj) ([]byte, error) {
+// profile == nil — всё через VPN. lanDirect — локальная сеть мимо VPN.
+func BuildConfig(server json.RawMessage, profile obj, lanDirect bool) ([]byte, error) {
 	var root obj
 	if err := json.Unmarshal(server, &root); err != nil {
 		return nil, errors.New("непонятный конфиг сервера")
@@ -162,10 +162,11 @@ func BuildConfig(server json.RawMessage, profile obj) ([]byte, error) {
 		routing = obj{}
 	}
 	old, _ := routing["rules"].([]any)
-	rules := []any{
-		obj{"type": "field", "ip": privateCIDRs, "outboundTag": "direct"},
-		obj{"type": "field", "ip": []any{"::/0"}, "outboundTag": "ipv6-block"}, // у серверов нет IPv6
+	var rules []any
+	if lanDirect {
+		rules = append(rules, obj{"type": "field", "ip": privateCIDRs, "outboundTag": "direct"})
 	}
+	rules = append(rules, obj{"type": "field", "ip": []any{"::/0"}, "outboundTag": "ipv6-block"}) // у серверов нет IPv6
 	if profile != nil {
 		rules = append(rules, profileRules(profile, proxyTag)...)
 		routing["domainStrategy"] = str(profile, "DomainStrategy", "IPIfNonMatch")
