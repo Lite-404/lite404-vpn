@@ -645,7 +645,7 @@ private fun WdttTab(model: AppModel, live: LiveState) {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Header(tr("Резервный VPN через VK"), tr("Включайте, когда обычный VPN не подключается"))
+        Header(tr("Резервный VPN через VK"), tr("Включайте, когда другие VPN не подключаются"))
         Spacer(Modifier.height(12.dp))
         SpeedRow(live)
         Spacer(Modifier.height(28.dp))

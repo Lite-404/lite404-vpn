@@ -89,7 +89,6 @@ VPN включён	VPN aktif
 нет разрешения на VPN	tidak ada izin VPN
 Система не дала запустить туннель. Откройте приложение и попробуйте снова	Sistem tidak mengizinkan terowongan dimulai. Buka aplikasi dan coba lagi
 Резервный VPN через VK	VPN cadangan via VK
-Включайте, когда обычный VPN не подключается	Nyalakan saat VPN biasa tidak terhubung
 Журнал резервного VPN	Log VPN cadangan
 Резервный VPN	VPN cadangan
 Для вас нет серверов резервного VPN	Tidak ada server VPN cadangan untuk Anda
@@ -98,3 +97,4 @@ VPN включён	VPN aktif
 Резервный VPN остановился. Подробности — в журнале (Настройки)	VPN cadangan berhenti. Detail ada di log (Pengaturan)
 Какие приложения идут через VPN. Действует и для обычного, и для резервного VPN	Aplikasi mana yang lewat VPN. Berlaku untuk VPN biasa dan cadangan
 Резерв	Cadangan
+Включайте, когда другие VPN не подключаются	Nyalakan saat VPN lain tidak terhubung

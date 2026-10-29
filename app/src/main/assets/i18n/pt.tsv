@@ -89,7 +89,6 @@ VPN включён	VPN ligada
 нет разрешения на VPN	sem permissão de VPN
 Система не дала запустить туннель. Откройте приложение и попробуйте снова	O sistema não permitiu iniciar o túnel. Abra o app e tente novamente
 Резервный VPN через VK	VPN reserva via VK
-Включайте, когда обычный VPN не подключается	Ative quando a VPN normal não conectar
 Журнал резервного VPN	Registro da VPN reserva
 Резервный VPN	VPN reserva
 Для вас нет серверов резервного VPN	Não há servidores de VPN reserva para você
@@ -98,3 +97,4 @@ VPN включён	VPN ligada
 Резервный VPN остановился. Подробности — в журнале (Настройки)	A VPN reserva parou. Detalhes no registro (Configurações)
 Какие приложения идут через VPN. Действует и для обычного, и для резервного VPN	Quais apps passam pela VPN. Vale para a VPN normal e a reserva
 Резерв	Reserva
+Включайте, когда другие VPN не подключаются	Ative quando outras VPNs não conectarem

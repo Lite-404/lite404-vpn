@@ -89,7 +89,6 @@ VPN включён	VPN açık
 нет разрешения на VPN	VPN izni yok
 Система не дала запустить туннель. Откройте приложение и попробуйте снова	Sistem tünelin başlatılmasına izin vermedi. Uygulamayı açıp tekrar deneyin
 Резервный VPN через VK	VK üzerinden yedek VPN
-Включайте, когда обычный VPN не подключается	Normal VPN bağlanmadığında açın
 Журнал резервного VPN	Yedek VPN günlüğü
 Резервный VPN	Yedek VPN
 Для вас нет серверов резервного VPN	Sizin için yedek VPN sunucusu yok
@@ -98,3 +97,4 @@ VPN включён	VPN açık
 Резервный VPN остановился. Подробности — в журнале (Настройки)	Yedek VPN durdu. Ayrıntılar günlükte (Ayarlar)
 Какие приложения идут через VPN. Действует и для обычного, и для резервного VPN	Hangi uygulamaların VPN'den geçeceği. Hem normal hem yedek VPN için geçerlidir
 Резерв	Yedek
+Включайте, когда другие VPN не подключаются	Diğer VPN'ler bağlanmadığında açın

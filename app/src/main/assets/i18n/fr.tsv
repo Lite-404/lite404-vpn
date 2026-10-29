@@ -89,7 +89,6 @@ VPN включён	VPN ligada
 нет разрешения на VPN	sem permissão de VPN
 Система не дала запустить туннель. Откройте приложение и попробуйте снова	O sistema não permitiu iniciar o túnel. Abra o app e tente novamente
 Резервный VPN через VK	VPN de secours via VK
-Включайте, когда обычный VPN не подключается	Activez-le quand le VPN normal ne se connecte pas
 Журнал резервного VPN	Journal du VPN de secours
 Резервный VPN	VPN de secours
 Для вас нет серверов резервного VPN	Aucun serveur VPN de secours pour vous
@@ -98,3 +97,4 @@ VPN включён	VPN ligada
 Резервный VPN остановился. Подробности — в журнале (Настройки)	Le VPN de secours s'est arrêté. Détails dans le journal (Paramètres)
 Какие приложения идут через VPN. Действует и для обычного, и для резервного VPN	Quelles applis passent par le VPN. S'applique au VPN normal et de secours
 Резерв	Secours
+Включайте, когда другие VPN не подключаются	Activez-le quand les autres VPN ne se connectent pas

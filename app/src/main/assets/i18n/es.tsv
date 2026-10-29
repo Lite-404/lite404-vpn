@@ -89,7 +89,6 @@ VPN включён	VPN activado
 нет разрешения на VPN	sin permiso de VPN
 Система не дала запустить туннель. Откройте приложение и попробуйте снова	El sistema no permitió iniciar el túnel. Abre la app e inténtalo de nuevo
 Резервный VPN через VK	VPN de respaldo vía VK
-Включайте, когда обычный VPN не подключается	Actívalo cuando el VPN normal no se conecte
 Журнал резервного VPN	Registro del VPN de respaldo
 Резервный VPN	VPN de respaldo
 Для вас нет серверов резервного VPN	No hay servidores de VPN de respaldo para ti
@@ -98,3 +97,4 @@ VPN включён	VPN activado
 Резервный VPN остановился. Подробности — в журнале (Настройки)	El VPN de respaldo se detuvo. Detalles en el registro (Ajustes)
 Какие приложения идут через VPN. Действует и для обычного, и для резервного VPN	Qué apps pasan por el VPN. Se aplica al VPN normal y al de respaldo
 Резерв	Respaldo
+Включайте, когда другие VPN не подключаются	Actívalo cuando otros VPN no se conecten

@@ -89,7 +89,6 @@ VPN включён	VPN yoqilgan
 нет разрешения на VPN	VPN uchun ruxsat yoʻq
 Система не дала запустить туннель. Откройте приложение и попробуйте снова	Tizim tunnelni ishga tushirishga ruxsat bermadi. Ilovani oching va qayta urinib koʻring
 Резервный VPN через VK	VK orqali zaxira VPN
-Включайте, когда обычный VPN не подключается	Oddiy VPN ulanmasa, yoqing
 Журнал резервного VPN	Zaxira VPN jurnali
 Резервный VPN	Zaxira VPN
 Для вас нет серверов резервного VPN	Siz uchun zaxira VPN serverlari yo'q
@@ -98,3 +97,4 @@ VPN включён	VPN yoqilgan
 Резервный VPN остановился. Подробности — в журнале (Настройки)	Zaxira VPN to'xtadi. Tafsilotlar — jurnalda (Sozlamalar)
 Какие приложения идут через VPN. Действует и для обычного, и для резервного VPN	Qaysi ilovalar VPN orqali o'tadi. Oddiy va zaxira VPN uchun amal qiladi
 Резерв	Zaxira
+Включайте, когда другие VPN не подключаются	Boshqa VPN ulanmasa, yoqing

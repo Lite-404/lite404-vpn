@@ -111,7 +111,6 @@ Android может усыплять VPN при выключенном экран
 нет ответа	no response
 туннель не работает	tunnel is not running
 Резервный VPN через VK	Backup VPN via VK
-Включайте, когда обычный VPN не подключается	Turn it on when the regular VPN doesn't connect
 Журнал резервного VPN	Backup VPN log
 Резервный VPN	Backup VPN
 Для вас нет серверов резервного VPN	No backup VPN servers for you
@@ -120,3 +119,4 @@ Android может усыплять VPN при выключенном экран
 Резервный VPN остановился. Подробности — в журнале (Настройки)	Backup VPN stopped. Details are in the log (Settings)
 Какие приложения идут через VPN. Действует и для обычного, и для резервного VPN	Which apps go through the VPN. Applies to both the regular and the backup VPN
 Резерв	Backup
+Включайте, когда другие VPN не подключаются	Turn it on when other VPNs don't connect
