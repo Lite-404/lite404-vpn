@@ -7,7 +7,11 @@ import org.json.JSONObject
 object XrayConfig {
     const val MTU = 1500
 
-    fun build(serverJson: String): String {
+    /**
+     * [profile] — профиль маршрутизации «как в Happ/INCY» (null — всё через VPN). Его geo-файлы
+     * должны быть уже скачаны ([Routing.ensureGeo]), иначе передавайте null.
+     */
+    fun build(serverJson: String, profile: JSONObject? = null): String {
         val root = JSONObject(serverJson)
         root.remove("remarks")
         // журнал каждого соединения (access) на телефоне только тратит процессор и батарею
@@ -22,21 +26,34 @@ object XrayConfig {
         val tags = (0 until outs.length()).map { outs.getJSONObject(it).optString("tag") }.toSet()
         if ("dns-out" !in tags) outs.put(JSONObject("""{"tag":"dns-out","protocol":"dns"}"""))
         if ("ipv6-block" !in tags) outs.put(JSONObject("""{"tag":"ipv6-block","protocol":"blackhole"}"""))
+        if ("direct" !in tags) outs.put(JSONObject("""{"tag":"direct","protocol":"freedom"}"""))
+        if ("block" !in tags) outs.put(JSONObject("""{"tag":"block","protocol":"blackhole"}"""))
+        val proxyTag = outs.optJSONObject(0)?.optString("tag")?.ifBlank { null } ?: "proxy"
 
         val routing = root.optJSONObject("routing") ?: JSONObject().also { root.put("routing", it) }
         val old = routing.optJSONArray("rules") ?: JSONArray()
         val rules = JSONArray()
         // DNS-запросы из TUN — во встроенный DNS Xray (он ходит к серверам DNS через прокси)
         rules.put(JSONObject("""{"type":"field","inboundTag":["tun"],"port":"53","outboundTag":"dns-out"}"""))
+        // локальная сеть (192.168.x и т.п.) — напрямую; обычно она и так не попадает в туннель (см. Lan)
+        rules.put(JSONObject().put("type", "field").put("ip", JSONArray(Lan.PRIVATE_CIDRS)).put("outboundTag", "direct"))
         // IPv6 серверы не умеют: отказываем сразу, иначе каждое соединение ждёт неудачной попытки по IPv6
         rules.put(JSONObject("""{"type":"field","ip":["::/0"],"outboundTag":"ipv6-block"}"""))
+        if (profile != null) {
+            Routing.rules(profile, proxyTag).forEach { rules.put(it) }
+            routing.put("domainStrategy", profile.optString("DomainStrategy").ifBlank { "IPIfNonMatch" })
+        }
         for (i in 0 until old.length()) {
             val r = stripGeo(old.getJSONObject(i)) ?: continue
             rules.put(r)
         }
         routing.put("rules", rules)
-        val dns = root.optJSONObject("dns") ?: JSONObject("""{"servers":["1.1.1.1","8.8.8.8"]}""").also { root.put("dns", it) }
-        dns.put("queryStrategy", "UseIPv4")   // приложения не получают AAAA → сразу идут по IPv4
+        if (profile != null) {
+            root.put("dns", Routing.dns(profile))
+        } else {
+            val dns = root.optJSONObject("dns") ?: JSONObject("""{"servers":["1.1.1.1","8.8.8.8"]}""").also { root.put("dns", it) }
+            dns.put("queryStrategy", "UseIPv4")   // приложения не получают AAAA → сразу идут по IPv4
+        }
         return root.toString()
     }
 

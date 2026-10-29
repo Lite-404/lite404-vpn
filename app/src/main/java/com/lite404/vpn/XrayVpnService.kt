@@ -236,8 +236,9 @@ class XrayVpnService : VpnService() {
             .setSession("Lite 404 VPN")
             .setMtu(XrayConfig.MTU)
             .addAddress("10.10.14.1", 30)
-            .addRoute("0.0.0.0", 0)
             .addDnsServer("1.1.1.1")
+        // весь интернет, кроме локальной сети (192.168.x, 10.x, 172.16–31.x): к ней — напрямую, мимо VPN
+        for ((ip, prefix) in Lan.PUBLIC_IPV4) b.addRoute(ip, prefix)
         // IPv6 тоже заворачиваем в туннель (иначе утечка мимо VPN); Xray отвечает на него отказом сразу
         runCatching { b.addAddress("fd66:6c34:3034::1", 126); b.addRoute("::", 0) }
         // туннелирование по приложениям; своё приложение всегда мимо VPN, иначе ядро Xray зациклится само на себя

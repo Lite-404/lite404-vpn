@@ -13,8 +13,8 @@ android {
         applicationId = "com.lite404.vpn"
         minSdk = 28
         targetSdk = 35
-        versionCode = 17
-        versionName = "0.6.3.1"
+        versionCode = 18
+        versionName = "0.7.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -124,6 +124,8 @@ android {
 }
 
 dependencies {
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")   // в юнит-тестах org.json из Android — заглушка
     implementation("androidx.core:core-ktx:1.15.0")
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.compose.ui:ui")

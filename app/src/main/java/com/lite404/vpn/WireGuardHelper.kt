@@ -108,8 +108,12 @@ class WireGuardHelper(context: Context) {
                 if (peer.persistentKeepalive.isPresent) peerBuilder.parsePersistentKeepalive(peer.persistentKeepalive.get().toString())
             }
             
-            peerBuilder.parseAllowedIPs("0.0.0.0/0")
-            
+            // весь интернет, кроме локальной сети (к ней — напрямую); DNS-сервер туннеля (10.66.x — тоже частный адрес)
+            // добавляем отдельно, иначе запросы к нему ушли бы мимо туннеля
+            val tunnelDns = parsedConfig.`interface`.dnsServers.mapNotNull { it.hostAddress }
+                .filter { ':' !in it }.map { "$it/32" }
+            peerBuilder.parseAllowedIPs((listOf(Lan.allowedIpsWithoutLan()) + tunnelDns).joinToString(", "))
+
             val finalConfig = Config.Builder()
                 .setInterface(newInterface)
                 .addPeer(peerBuilder.build())

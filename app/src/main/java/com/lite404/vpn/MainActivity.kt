@@ -459,9 +459,8 @@ private fun VpnTab(model: AppModel, live: LiveState) {
 
     fun connect() {
         val s = servers.getOrNull(index) ?: return
-        val conf = runCatching { XrayConfig.build(s.config) }.getOrElse { model.notify(tr("Не удалось подготовить конфиг: %s", it.message), ToastKind.Error); return }
         model.askBatteryOnce()
-        Connection.connectXray(ctx, s, conf)
+        Connection.connectXray(ctx, s, Routing.profile(cfg, model.prefs.routingMode)) { model.notify(it, ToastKind.Info) }
     }
     val askVpn = rememberVpnPermission { connect() }
 
@@ -829,6 +828,35 @@ private fun SettingsTab(model: AppModel) {
                 Text(tr("Язык приложения"), fontSize = 15.sp, modifier = Modifier.weight(1f))
                 Text(current, color = Accent, fontSize = 15.sp)
             }
+        }
+        Section(tr("Маршрутизация")) {
+            var mode by remember { mutableStateOf(model.prefs.routingMode) }
+            val available = model.config?.routing ?: emptyMap()
+            // описание — из самого профиля в панели (его меняют без обновления приложения); одинаковые не дублируем
+            val happ = available[Routing.MODE_HAPP]
+            val incy = available[Routing.MODE_INCY]?.takeIf { it.toString() != happ?.toString() }
+            val options = buildList {
+                add(Triple(Routing.MODE_HAPP, tr("Умная, как в Happ"), happ?.let { Routing.describe(it) } ?: ""))
+                if (incy != null || happ == null) add(Triple(Routing.MODE_INCY, tr("Умная, как в INCY"), incy?.let { Routing.describe(it) } ?: ""))
+                add(Triple(Routing.MODE_OFF, tr("Всё через VPN"), tr("Кроме локальной сети")))
+            }
+            if (mode == Routing.MODE_INCY && options.none { it.first == Routing.MODE_INCY }) mode = Routing.MODE_HAPP
+            for ((value, title, hint) in options) {
+                val enabled = value == Routing.MODE_OFF || value in available
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                        .clickable(enabled = enabled) { mode = value; model.prefs.routingMode = value }.padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(selected = mode == value, onClick = null, enabled = enabled, modifier = Modifier.size(24.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(title, fontSize = 15.sp, color = if (enabled) Color.Unspecified else Muted)
+                        Text(if (enabled) hint else tr("Не настроено на сервере"), color = Muted, fontSize = 12.sp)
+                    }
+                }
+            }
+            Text(tr("Локальная сеть (роутер, принтер, 192.168.x.x) всегда работает напрямую. Новый режим применится при следующем подключении."), color = Muted, fontSize = 12.sp)
         }
         Section(tr("Пинг и проверка соединения")) {
             var pingOnOpen by remember { mutableStateOf(model.prefs.pingOnOpen) }

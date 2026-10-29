@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lite404 VPN</title>
+<style>
+  :root { --bg:#0b0b0c; --card:#17171a; --line:#26262b; --accent:#b4ff39; --muted:#8a8a90; --warn:#ffc233; --danger:#ff5a5a; --text:#f2f2f3; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  main { max-width:520px; margin:0 auto; padding:28px 18px 60px; }
+  header { display:flex; align-items:baseline; justify-content:space-between; margin-bottom:20px; }
+  h1 { font-size:22px; margin:0; letter-spacing:-.3px; } h1 b { color:var(--accent); }
+  .ver { color:var(--muted); font-size:12px; }
+  .card { background:var(--card); border-radius:16px; padding:16px; margin-bottom:14px; }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.6px; color:var(--muted); margin:0 0 10px; font-weight:600; }
+  .muted { color:var(--muted); font-size:13px; }
+  .warn { color:var(--warn); font-size:13px; } .err { color:var(--danger); font-size:13px; }
+  button { font:inherit; border:0; border-radius:12px; padding:10px 14px; cursor:pointer; background:#26262b; color:var(--text); }
+  button:hover { background:#303036; } button:disabled { opacity:.5; cursor:default; }
+  button.primary { background:var(--accent); color:#111; font-weight:600; }
+  textarea, input[type=text] { width:100%; font:13px ui-monospace,Consolas,monospace; background:#0f0f11; color:var(--text); border:1px solid var(--line); border-radius:10px; padding:10px; }
+  textarea { height:90px; resize:vertical; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .power { display:flex; flex-direction:column; align-items:center; gap:10px; padding:10px 0 6px; }
+  .ring { width:132px; height:132px; border-radius:50%; border:6px solid #3a3a40; background:#111113; color:var(--text); font-size:15px; font-weight:600; transition:border-color .2s; }
+  .ring.on { border-color:var(--accent); } .ring.connecting { border-color:var(--warn); }
+  .state { font-size:16px; font-weight:600; }
+  .server { display:flex; justify-content:space-between; align-items:center; padding:11px 12px; border-radius:12px; cursor:pointer; border:1px solid transparent; }
+  .server:hover { background:#1f1f23; } .server.sel { border-color:var(--accent); }
+  .ping { font-size:13px; font-variant-numeric:tabular-nums; }
+  .opt { display:flex; gap:10px; padding:8px 0; cursor:pointer; align-items:flex-start; }
+  .opt input { margin-top:3px; accent-color:var(--accent); }
+  .hidden { display:none !important; }
+  #toast { position:fixed; left:50%; bottom:22px; transform:translateX(-50%); background:#26262b; padding:10px 16px; border-radius:12px; max-width:90%; font-size:14px; opacity:0; transition:opacity .2s; pointer-events:none; }
+  #toast.show { opacity:1; }
+  a { color:var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <header><h1>Lite<b>404</b> VPN</h1><span class="ver" id="ver"></span></header>
+
+  <section id="login" class="card hidden">
+    <h2>Вход</h2>
+    <p class="muted">Вставьте токен из бота <a href="https://t.me/lite404bot" target="_blank">@lite404bot</a> (раздел «Приложение»). Он начинается с <code>L404-</code>.</p>
+    <textarea id="token" placeholder="L404-..."></textarea>
+    <div class="row" style="margin-top:10px"><button class="primary" id="loginBtn">Войти</button></div>
+  </section>
+
+  <div id="mainView" class="hidden">
+    <section class="card">
+      <div class="power">
+        <button class="ring" id="power">Подключить</button>
+        <div class="state" id="state">Отключено</div>
+        <div class="muted" id="stateHint"></div>
+        <div class="warn" id="notice"></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="row" style="justify-content:space-between;margin-bottom:6px"><h2 style="margin:0">Серверы</h2>
+        <div class="row"><button id="pingBtn">Пинг</button><button id="refreshBtn">Обновить</button></div></div>
+      <div class="err" id="subError"></div>
+      <div id="servers"></div>
+    </section>
+
+    <section class="card">
+      <h2>Подписка</h2>
+      <div id="user" class="muted"></div>
+    </section>
+
+    <section class="card">
+      <h2>Маршрутизация</h2>
+      <label class="opt"><input type="radio" name="routing" value="happ"><span>Умная, как в Happ</span></label>
+      <label class="opt" id="incyOpt"><input type="radio" name="routing" value="incy"><span>Умная, как в INCY</span></label>
+      <label class="opt"><input type="radio" name="routing" value="off"><span>Всё через VPN</span></label>
+      <div class="muted" id="routingHint"></div>
+      <p class="muted">Локальная сеть (роутер, принтер, 192.168.x.x) всегда работает напрямую. Изменения — со следующего подключения.</p>
+    </section>
+
+    <section class="card">
+      <h2>Прокси</h2>
+      <label class="opt"><input type="checkbox" id="sysProxy"><span>Включать системный прокси при подключении<br><span class="muted" id="proxyHint"></span></span></label>
+      <p class="muted">Для программ, которые не видят системный прокси: HTTP <code id="httpAddr"></code>, SOCKS5 <code id="socksAddr"></code>.</p>
+      <div class="err" id="proxyError"></div>
+    </section>
+
+    <section class="card">
+      <h2>Пинг</h2>
+      <p class="muted">Адрес проверки задержки и соединения</p>
+      <div class="row"><input type="text" id="pingUrl" style="flex:1"><button id="pingUrlSave">Сохранить</button></div>
+    </section>
+
+    <section class="card row" style="justify-content:space-between">
+      <button id="logoutBtn">Выйти из аккаунта</button>
+      <button id="quitBtn">Закрыть программу</button>
+    </section>
+  </div>
+
+  <section id="closed" class="card hidden"><h2>Программа закрыта</h2><p class="muted">VPN отключён, системный прокси снят. Эту вкладку можно закрыть.</p></section>
+</main>
+<div id="toast"></div>
+<script>
+const $ = id => document.getElementById(id);
+let S = {}, selected = null, busy = false, toastTimer;
+
+function toast(text) {
+  if (!text) return;
+  $('toast').textContent = text; $('toast').classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => $('toast').classList.remove('show'), 4500);
+}
+async function api(path, body) {
+  const opts = body === undefined ? {} : { method:'POST', headers:{ 'X-Lite404':'1', 'Content-Type':'application/json' }, body:JSON.stringify(body) };
+  const r = await fetch('/api/' + path, opts);
+  const s = await r.json();
+  render(s);
+  if (s.message) toast(s.message);
+  return s;
+}
+function gb(b) { return (b / 1073741824).toFixed(b < 10737418240 ? 2 : 1) + ' ГБ'; }
+function pingText(ms) {
+  if (ms === undefined) return ['', ''];
+  if (ms < 0) return ['нет ответа', 'var(--danger)'];
+  return [ms + ' мс', ms < 250 ? 'var(--accent)' : ms < 600 ? 'var(--warn)' : 'var(--danger)'];
+}
+function render(s) {
+  S = s;
+  $('ver').textContent = 'v' + s.version;
+  $('login').classList.toggle('hidden', s.hasToken);
+  $('mainView').classList.toggle('hidden', !s.hasToken);
+  if (!s.hasToken) return;
+  if (selected === null) selected = s.connected >= 0 ? s.connected : (s.server || 0);
+  const names = s.servers || [];
+  if (selected >= names.length) selected = 0;
+
+  const ring = $('power');
+  ring.className = 'ring ' + s.status;
+  ring.textContent = s.status === 'on' ? 'Отключить' : s.status === 'connecting' ? '…' : 'Подключить';
+  ring.disabled = busy || !names.length;
+  $('state').textContent = s.status === 'on' ? 'Подключено' : s.status === 'connecting' ? 'Подключение…' : 'Отключено';
+  $('stateHint').textContent = s.status === 'on' ? (names[s.connected] || '') : '';
+  $('notice').textContent = s.notice || '';
+
+  $('subError').textContent = s.error || '';
+  const list = $('servers'); list.innerHTML = '';
+  if (!names.length) list.innerHTML = '<p class="muted">Серверов пока нет — нажмите «Обновить»</p>';
+  names.forEach((name, i) => {
+    const d = document.createElement('div');
+    d.className = 'server' + (i === selected ? ' sel' : '');
+    const [t, c] = s.pinging && !(s.pings && i in s.pings) ? ['…', 'var(--muted)'] : pingText(s.pings ? s.pings[i] : undefined);
+    d.innerHTML = '<span></span><span class="ping"></span>';
+    d.firstChild.textContent = name + (i === s.connected ? '  ●' : '');
+    d.lastChild.textContent = t; d.lastChild.style.color = c;
+    d.onclick = () => choose(i);
+    list.appendChild(d);
+  });
+  $('pingBtn').disabled = s.pinging;
+
+  const u = s.user;
+  if (u) {
+    const parts = [];
+    parts.push(u.enabled ? 'Активна' : 'Выключена');
+    if (u.expires_at > 0) {
+      const exp = u.expires_at > 1e11 ? u.expires_at : u.expires_at * 1000, days = Math.ceil((exp - Date.now()) / 86400000);
+      parts.push('до ' + new Date(exp).toLocaleDateString('ru-RU') + (days >= 0 ? ' (' + days + ' дн.)' : ''));
+    } else parts.push('бессрочно');
+    parts.push('трафик: ' + gb(u.up + u.down) + (u.total > 0 ? ' из ' + gb(u.total) : ''));
+    if (u.devices_limit > 0) parts.push('устройств: ' + u.devices + ' из ' + u.devices_limit);
+    $('user').textContent = (u.name ? u.name + ' · ' : '') + parts.join(' · ');
+  }
+
+  document.querySelectorAll('input[name=routing]').forEach(r => r.checked = r.value === s.routing);
+  const profiles = s.profiles || {};
+  $('incyOpt').classList.toggle('hidden', !!s.sameProfiles || !profiles.incy);
+  if (s.sameProfiles && s.routing === 'incy') document.querySelector('input[value=happ]').checked = true;
+  const p = s.routing === 'off' ? null : (profiles[s.routing] || profiles.happ || profiles.incy);
+  $('routingHint').textContent = s.routing === 'off' ? 'Все сайты идут через VPN' : (p || 'Профиль маршрутизации ещё не получен — нажмите «Обновить»');
+
+  $('sysProxy').checked = s.systemProxy;
+  $('proxyHint').textContent = s.proxyHint;
+  $('httpAddr').textContent = s.http; $('socksAddr').textContent = s.socks;
+  $('proxyError').textContent = s.proxyError || '';
+  if (document.activeElement !== $('pingUrl')) $('pingUrl').value = s.pingUrl;
+}
+async function choose(i) {
+  selected = i; render(S);
+  if (S.status === 'on' && S.connected !== i) await connect();
+}
+async function connect() {
+  busy = true; render(S);
+  try {
+    const s = await api('connect', { server:selected });
+    if (s.checkError) toast(s.checkError);
+    else if (s.check >= 0) toast('Соединение работает · ' + s.check + ' мс');
+  } finally { busy = false; render(S); }
+}
+$('power').onclick = async () => {
+  if (S.status === 'on') { busy = true; try { await api('disconnect', {}); } finally { busy = false; render(S); } }
+  else await connect();
+};
+$('loginBtn').onclick = async () => {
+  $('loginBtn').disabled = true;
+  try { const s = await api('token', { token:$('token').value }); if (!s.message) $('token').value = ''; }
+  finally { $('loginBtn').disabled = false; }
+};
+$('refreshBtn').onclick = async () => {
+  $('refreshBtn').disabled = true;
+  try { const s = await api('refresh', {}); if (!s.message) toast('Список обновлён'); } finally { $('refreshBtn').disabled = false; }
+};
+$('pingBtn').onclick = () => api('ping', {});
+document.querySelectorAll('input[name=routing]').forEach(r => r.onchange = () => {
+  api('settings', { routing:r.value }); if (S.status === 'on') toast('Переподключитесь, чтобы применить');
+});
+$('sysProxy').onchange = () => api('settings', { systemProxy:$('sysProxy').checked });
+$('pingUrlSave').onclick = () => api('settings', { pingUrl:$('pingUrl').value.trim() }).then(() => toast('Сохранено'));
+$('logoutBtn').onclick = () => { if (confirm('Выйти из аккаунта? VPN отключится, токен удалится с этого компьютера.')) api('logout', {}); };
+$('quitBtn').onclick = async () => {
+  await api('quit', {}).catch(() => {});
+  $('mainView').classList.add('hidden'); $('closed').classList.remove('hidden'); clearInterval(timer);
+};
+const timer = setInterval(() => { if (!busy) api('state').catch(() => {}); }, 2000);
+api('state');
+</script>
+</body>
+</html>

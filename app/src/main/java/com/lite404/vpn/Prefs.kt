@@ -56,6 +56,11 @@ class Prefs(ctx: Context) {
         get() = p.getBoolean("test_after_connect", true)
         set(v) = p.edit().putBoolean("test_after_connect", v).apply()
 
+    /** Маршрутизация обычного VPN: "happ" | "incy" (профили из панели) | "off" — всё через VPN. */
+    var routingMode: String
+        get() = p.getString("routing_mode", Routing.MODE_HAPP) ?: Routing.MODE_HAPP
+        set(v) = p.edit().putString("routing_mode", v).apply()
+
     /** Предлагали ли уже снять ограничение батареи (чтобы не спрашивать каждый раз). */
     var batteryAsked: Boolean
         get() = p.getBoolean("battery_asked", false)

@@ -45,7 +45,9 @@ data class AppConfig(
     val wdtt: List<WdttServer>,
     val xray: List<XrayServer>,
     val error: String?,
-    val fetchedAt: Long
+    val fetchedAt: Long,
+    /** Профили маршрутизации из панели: "happ", "incy" (см. Routing). */
+    val routing: Map<String, JSONObject> = emptyMap()
 ) {
     companion object {
         fun parse(raw: String, fetchedAt: Long): AppConfig {
@@ -67,7 +69,9 @@ data class AppConfig(
                 val c = xr.getJSONObject(it)
                 XrayServer(c.optString("remarks").ifBlank { tr("Сервер %s", it + 1) }, c.toString())
             }
-            return AppConfig(user, o.optString("vk_hash"), wdtt, xray, o.optString("error").ifBlank { null }, fetchedAt)
+            val rt = o.optJSONObject("routing")
+            val routing = rt?.keys()?.asSequence()?.mapNotNull { k -> rt.optJSONObject(k)?.let { k to it } }?.toMap() ?: emptyMap()
+            return AppConfig(user, o.optString("vk_hash"), wdtt, xray, o.optString("error").ifBlank { null }, fetchedAt, routing)
         }
     }
 }

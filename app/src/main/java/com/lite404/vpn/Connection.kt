@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import org.json.JSONObject
 
 enum class VpnMode { XRAY, WDTT }
 enum class Phase { OFF, CONNECTING, ON, STOPPING }
@@ -63,7 +64,15 @@ object Connection {
         }
     }
 
-    fun connectXray(ctx: Context, server: XrayServer, config: String) = run(ctx, ConnState(VpnMode.XRAY, Phase.CONNECTING)) { app ->
+    /**
+     * [profile] — маршрутизация «как в Happ/INCY» (null — всё через VPN). Её geo-файлы качаются здесь же;
+     * не скачались и в кэше пусто — подключаемся без неё и сообщаем через [notice].
+     */
+    fun connectXray(ctx: Context, server: XrayServer, profile: JSONObject?, notice: (String) -> Unit = {}) =
+        run(ctx, ConnState(VpnMode.XRAY, Phase.CONNECTING)) { app ->
+        val usable = profile?.takeIf { Routing.ensureGeo(app, it) }
+        if (profile != null && usable == null) notice(tr("Не удалось скачать правила маршрутизации — сейчас всё идёт через VPN"))
+        val config = XrayConfig.build(server.config, usable)
         if (WdttController.active()) {
             WdttController.stopAndWait(app)
             delay(600)   // система освобождает VPN-интерфейс WireGuard
