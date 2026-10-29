@@ -161,7 +161,7 @@ object Connection {
             xray.startsWith("error:") -> ConnState(error = xray.removePrefix("error:"))
             // WDTT сам остановился (не по кнопке) — показываем причину из журнала туннеля
             prev.mode == VpnMode.WDTT && prev.phase != Phase.OFF && prev.phase != Phase.STOPPING ->
-                ConnState(error = lastWdttError() ?: tr("Туннель WDTT остановился. Подробности — в журнале (Настройки)"))
+                ConnState(error = lastWdttError() ?: tr("Резервный VPN остановился. Подробности — в журнале (Настройки)"))
             else -> ConnState(error = prev.error.takeIf { prev.phase == Phase.OFF })
         }
         _state.value = next

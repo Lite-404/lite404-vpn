@@ -296,7 +296,7 @@ private fun TokenScreen(model: AppModel) {
 
 private enum class Tab(val title: String, val icon: ImageVector) {
     VPN("VPN", Icons.Default.Lock),
-    WDTT("WDTT", Icons.Default.Warning),
+    WDTT("Резерв", Icons.Default.Warning),
     APPS("Приложения", Icons.AutoMirrored.Filled.List),
     SETTINGS("Настройки", Icons.Default.Settings)
 }
@@ -541,8 +541,8 @@ private fun StatusLine(conn: ConnState, tabMode: VpnMode) {
             Text(tr("Ошибка: ") + conn.error, color = Danger, fontSize = 13.sp, textAlign = TextAlign.Center)
         conn.mode != null && conn.mode != tabMode && conn.phase != Phase.OFF ->
             Text(
-                if (tabMode == VpnMode.XRAY) tr("Сейчас включён WDTT. Нажмите кнопку — переключимся на обычный VPN")
-                else tr("Сейчас включён обычный VPN. Нажмите кнопку — переключимся на WDTT"),
+                if (tabMode == VpnMode.XRAY) tr("Сейчас включён резервный VPN. Нажмите кнопку — переключимся на обычный")
+                else tr("Сейчас включён обычный VPN. Нажмите кнопку — переключимся на резервный"),
                 color = Muted, fontSize = 13.sp, textAlign = TextAlign.Center
             )
         conn.mode == tabMode && conn.phase == Phase.ON -> Row(verticalAlignment = Alignment.CenterVertically) {
@@ -645,7 +645,7 @@ private fun WdttTab(model: AppModel, live: LiveState) {
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Header(tr("Аварийный туннель VK"), tr("Когда обычный VPN не работает — трафик идёт через звонки VK"))
+        Header(tr("Резервный VPN через VK"), tr("Включайте, когда обычный VPN не подключается"))
         Spacer(Modifier.height(12.dp))
         SpeedRow(live)
         Spacer(Modifier.height(28.dp))
@@ -660,7 +660,7 @@ private fun WdttTab(model: AppModel, live: LiveState) {
                 st != "off" -> Connection.disconnect(ctx)
                 cfg?.error == "expired" -> model.notify(AppApi.errorText("expired"), ToastKind.Error)
                 hash.isBlank() -> model.notify(tr("Добавьте хеш VK в боте"), ToastKind.Error)
-                servers.isEmpty() -> model.notify(tr("Для вас нет серверов WDTT"), ToastKind.Error)
+                servers.isEmpty() -> model.notify(tr("Для вас нет серверов резервного VPN"), ToastKind.Error)
                 else -> askVpn()
             }
         }
@@ -716,7 +716,7 @@ private fun AppsTab(model: AppModel, live: LiveState) {
 
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
         Spacer(Modifier.height(20.dp))
-        Header(tr("Приложения"), tr("Какие приложения идут через VPN. Действует и для обычного VPN, и для WDTT"))
+        Header(tr("Приложения"), tr("Какие приложения идут через VPN. Действует и для обычного, и для резервного VPN"))
         Spacer(Modifier.height(12.dp))
         listOf(
             "off" to tr("Все приложения через VPN"),
@@ -875,8 +875,8 @@ private fun SettingsTab(model: AppModel) {
             )
             if (!unrestricted) TextButton(onClick = { Battery.request(ctx) }) { Text(tr("Разрешить работу в фоне")) }
         }
-        Section("WDTT") {
-            TextButton(onClick = { showLogs = true }) { Text(tr("Журнал аварийного туннеля")) }
+        Section(tr("Резервный VPN")) {
+            TextButton(onClick = { showLogs = true }) { Text(tr("Журнал резервного VPN")) }
         }
         var crash by remember { mutableStateOf(CrashLog.read(ctx)) }
         crash?.let { text ->
@@ -964,7 +964,7 @@ private fun LogsScreen(onBack: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) }
-            Text(tr("Журнал WDTT"), fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            Text(tr("Журнал резервного VPN"), fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             TextButton(onClick = { TunnelManager.clearLogs() }) { Text(tr("Очистить")) }
         }
         if (logs.isEmpty()) Text(tr("Пусто"), color = Muted, modifier = Modifier.padding(16.dp))

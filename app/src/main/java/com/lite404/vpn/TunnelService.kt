@@ -394,7 +394,7 @@ class TunnelService : Service() {
     private fun createNotificationChannel() {
         val channel = NotificationChannel(
             TUNNEL_NOTIFICATION_CHANNEL_ID,
-            tr("WDTT Туннель"),
+            tr("Резервный VPN"),
             NotificationManager.IMPORTANCE_LOW
         ).apply {
             description = tr("Уведомление о работе туннеля")
@@ -421,7 +421,7 @@ class TunnelService : Service() {
         )
 
         return NotificationCompat.Builder(this, TUNNEL_NOTIFICATION_CHANNEL_ID)
-            .setContentTitle("WDTT")
+            .setContentTitle(tr("Резервный VPN"))
             .setContentText(text)
             .setSmallIcon(R.drawable.ic_stat_connected)
             .setOngoing(true)

@@ -22,16 +22,11 @@
 Подписка выключена	Assinatura desativada
 Подписка бессрочная	Assinatura sem validade
 Осталось %s · до %s	Dias restantes: %s · até %s
-Не удалось включить WDTT	Não foi possível ativar o WDTT
-Аварийный туннель VK	Túnel de emergência VK
-Когда обычный VPN не работает — трафик идёт через звонки VK	Quando a VPN comum não funciona, o tráfego passa por chamadas do VK
 Добавьте хеш VK в боте	Adicione o hash do VK no bot
-Для вас нет серверов WDTT	Não há servidores WDTT para você
 Хеш VK не задан. Добавьте его в боте и нажмите «Обновить подписку» на вкладке VPN.	O hash do VK não está definido. Adicione-o no bot e toque em «Atualizar assinatura» na aba VPN.
 Страна	País
 Страна изменена. Включите туннель снова	País alterado. Ative o túnel novamente
 Приложения	Apps
-Какие приложения идут через VPN. Действует и для обычного VPN, и для WDTT	Quais apps passam pela VPN. Vale para a VPN comum e para o WDTT
 Все приложения через VPN	Todos os apps pela VPN
 Все, кроме выбранных	Todos, exceto os escolhidos
 Только выбранные	Somente os escolhidos
@@ -49,7 +44,6 @@
 %s из %s	%s de %s
 Сервер	Servidor
 Выйти из аккаунта	Sair da conta
-Журнал аварийного туннеля	Registro do túnel de emergência
 Последний сбой	Última falha
 Отчёт скопирован	Relatório copiado
 Скопировать	Copiar
@@ -65,7 +59,6 @@
 VPN отключится, данные подписки удалятся с телефона. Чтобы войти снова, понадобится токен из бота.	A VPN será desligada e os dados da assinatura serão apagados do telefone. Para entrar de novo, você precisará de um token do bot.
 Выйти	Sair
 Отмена	Cancelar
-Журнал WDTT	Registro do WDTT
 Очистить	Limpar
 Пусто	Vazio
 Б	B
@@ -89,10 +82,19 @@ VPN отключится, данные подписки удалятся с те
 Подключение...	Conectando...
 Ожидание сети (Фоновый сон)	Aguardando rede (suspensão)
 Туннель активен	Túnel ativo
-WDTT Туннель	Túnel WDTT
 Уведомление о работе туннеля	Notificação do túnel
 Отключить	Desconectar
 VPN включён	VPN ligada
 выбранные приложения не установлены — измените список на вкладке «Приложения»	os apps escolhidos não estão instalados — altere a lista na aba «Apps»
 нет разрешения на VPN	sem permissão de VPN
 Система не дала запустить туннель. Откройте приложение и попробуйте снова	O sistema não permitiu iniciar o túnel. Abra o app e tente novamente
+Резервный VPN через VK	VPN reserva via VK
+Включайте, когда обычный VPN не подключается	Ative quando a VPN normal não conectar
+Журнал резервного VPN	Registro da VPN reserva
+Резервный VPN	VPN reserva
+Для вас нет серверов резервного VPN	Não há servidores de VPN reserva para você
+Сейчас включён резервный VPN. Нажмите кнопку — переключимся на обычный	A VPN reserva está ativa. Toque no botão para mudar para a normal
+Сейчас включён обычный VPN. Нажмите кнопку — переключимся на резервный	A VPN normal está ativa. Toque no botão para mudar para a reserva
+Резервный VPN остановился. Подробности — в журнале (Настройки)	A VPN reserva parou. Detalhes no registro (Configurações)
+Какие приложения идут через VPN. Действует и для обычного, и для резервного VPN	Quais apps passam pela VPN. Vale para a VPN normal e a reserva
+Резерв	Reserva

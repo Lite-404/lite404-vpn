@@ -22,16 +22,11 @@
 Подписка выключена	Abonelik kapalı
 Подписка бессрочная	Abonelik süresiz
 Осталось %s · до %s	Kalan gün: %s · %s tarihine kadar
-Не удалось включить WDTT	WDTT açılamadı
-Аварийный туннель VK	VK acil durum tüneli
-Когда обычный VPN не работает — трафик идёт через звонки VK	Normal VPN çalışmadığında trafik VK aramaları üzerinden geçer
 Добавьте хеш VK в боте	Botta VK hash’inizi ekleyin
-Для вас нет серверов WDTT	Sizin için WDTT sunucusu yok
 Хеш VK не задан. Добавьте его в боте и нажмите «Обновить подписку» на вкладке VPN.	VK hash’i ayarlanmamış. Botta ekleyin ve VPN sekmesinde «Aboneliği yenile»ye dokunun.
 Страна	Ülke
 Страна изменена. Включите туннель снова	Ülke değişti. Tüneli yeniden açın
 Приложения	Uygulamalar
-Какие приложения идут через VPN. Действует и для обычного VPN, и для WDTT	Hangi uygulamalar VPN’den geçer. Hem normal VPN hem WDTT için geçerlidir
 Все приложения через VPN	Tüm uygulamalar VPN’den
 Все, кроме выбранных	Seçilenler hariç hepsi
 Только выбранные	Yalnızca seçilenler
@@ -49,7 +44,6 @@
 %s из %s	%s / %s
 Сервер	Sunucu
 Выйти из аккаунта	Hesaptan çık
-Журнал аварийного туннеля	Acil durum tüneli günlüğü
 Последний сбой	Son çökme
 Отчёт скопирован	Rapor kopyalandı
 Скопировать	Kopyala
@@ -65,7 +59,6 @@
 VPN отключится, данные подписки удалятся с телефона. Чтобы войти снова, понадобится токен из бота.	VPN kapanacak ve abonelik verileri telefondan silinecek. Tekrar giriş için bottan token gerekecek.
 Выйти	Çık
 Отмена	İptal
-Журнал WDTT	WDTT günlüğü
 Очистить	Temizle
 Пусто	Boş
 Б	B
@@ -89,10 +82,19 @@ VPN отключится, данные подписки удалятся с те
 Подключение...	Bağlanıyor...
 Ожидание сети (Фоновый сон)	Ağ bekleniyor (arka plan uykusu)
 Туннель активен	Tünel etkin
-WDTT Туннель	WDTT Tüneli
 Уведомление о работе туннеля	Tünel çalışma bildirimi
 Отключить	Bağlantıyı kes
 VPN включён	VPN açık
 выбранные приложения не установлены — измените список на вкладке «Приложения»	seçilen uygulamalar yüklü değil — «Uygulamalar» sekmesinde listeyi değiştirin
 нет разрешения на VPN	VPN izni yok
 Система не дала запустить туннель. Откройте приложение и попробуйте снова	Sistem tünelin başlatılmasına izin vermedi. Uygulamayı açıp tekrar deneyin
+Резервный VPN через VK	VK üzerinden yedek VPN
+Включайте, когда обычный VPN не подключается	Normal VPN bağlanmadığında açın
+Журнал резервного VPN	Yedek VPN günlüğü
+Резервный VPN	Yedek VPN
+Для вас нет серверов резервного VPN	Sizin için yedek VPN sunucusu yok
+Сейчас включён резервный VPN. Нажмите кнопку — переключимся на обычный	Yedek VPN açık. Normal VPN'e geçmek için düğmeye dokunun
+Сейчас включён обычный VPN. Нажмите кнопку — переключимся на резервный	Normal VPN açık. Yedek VPN'e geçmek için düğmeye dokunun
+Резервный VPN остановился. Подробности — в журнале (Настройки)	Yedek VPN durdu. Ayrıntılar günlükte (Ayarlar)
+Какие приложения идут через VPN. Действует и для обычного, и для резервного VPN	Hangi uygulamaların VPN'den geçeceği. Hem normal hem yedek VPN için geçerlidir
+Резерв	Yedek

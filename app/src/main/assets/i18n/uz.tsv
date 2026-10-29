@@ -22,16 +22,11 @@
 Подписка выключена	Obuna oʻchirilgan
 Подписка бессрочная	Obuna muddatsiz
 Осталось %s · до %s	Qolgan kunlar: %s · %s gacha
-Не удалось включить WDTT	WDTT ni yoqib boʻlmadi
-Аварийный туннель VK	VK favqulodda tunneli
-Когда обычный VPN не работает — трафик идёт через звонки VK	Oddiy VPN ishlamasa, trafik VK qoʻngʻiroqlari orqali oʻtadi
 Добавьте хеш VK в боте	Botda VK xeshini qoʻshing
-Для вас нет серверов WDTT	Siz uchun WDTT serverlari yoʻq
 Хеш VK не задан. Добавьте его в боте и нажмите «Обновить подписку» на вкладке VPN.	VK xeshi berilmagan. Uni botda qoʻshing va VPN yorligʻida «Obunani yangilash»ni bosing.
 Страна	Davlat
 Страна изменена. Включите туннель снова	Davlat oʻzgardi. Tunnelni qayta yoqing
 Приложения	Ilovalar
-Какие приложения идут через VPN. Действует и для обычного VPN, и для WDTT	Qaysi ilovalar VPN orqali oʻtadi. Oddiy VPN va WDTT uchun ham amal qiladi
 Все приложения через VPN	Barcha ilovalar VPN orqali
 Все, кроме выбранных	Tanlanganlardan tashqari hammasi
 Только выбранные	Faqat tanlanganlar
@@ -49,7 +44,6 @@
 %s из %s	%s / %s
 Сервер	Server
 Выйти из аккаунта	Hisobdan chiqish
-Журнал аварийного туннеля	Favqulodda tunnel jurnali
 Последний сбой	Oxirgi nosozlik
 Отчёт скопирован	Hisobot nusxalandi
 Скопировать	Nusxalash
@@ -65,7 +59,6 @@
 VPN отключится, данные подписки удалятся с телефона. Чтобы войти снова, понадобится токен из бота.	VPN uziladi, obuna maʼlumotlari telefondan oʻchiriladi. Qayta kirish uchun botdan token kerak boʻladi.
 Выйти	Chiqish
 Отмена	Bekor qilish
-Журнал WDTT	WDTT jurnali
 Очистить	Tozalash
 Пусто	Boʻsh
 Б	B
@@ -89,10 +82,19 @@ VPN отключится, данные подписки удалятся с те
 Подключение...	Ulanmoqda...
 Ожидание сети (Фоновый сон)	Tarmoq kutilmoqda (fon uyqusi)
 Туннель активен	Tunnel faol
-WDTT Туннель	WDTT tunneli
 Уведомление о работе туннеля	Tunnel ishlashi haqida bildirishnoma
 Отключить	Uzish
 VPN включён	VPN yoqilgan
 выбранные приложения не установлены — измените список на вкладке «Приложения»	tanlangan ilovalar oʻrnatilmagan — «Ilovalar» yorligʻida roʻyxatni oʻzgartiring
 нет разрешения на VPN	VPN uchun ruxsat yoʻq
 Система не дала запустить туннель. Откройте приложение и попробуйте снова	Tizim tunnelni ishga tushirishga ruxsat bermadi. Ilovani oching va qayta urinib koʻring
+Резервный VPN через VK	VK orqali zaxira VPN
+Включайте, когда обычный VPN не подключается	Oddiy VPN ulanmasa, yoqing
+Журнал резервного VPN	Zaxira VPN jurnali
+Резервный VPN	Zaxira VPN
+Для вас нет серверов резервного VPN	Siz uchun zaxira VPN serverlari yo'q
+Сейчас включён резервный VPN. Нажмите кнопку — переключимся на обычный	Hozir zaxira VPN yoqilgan. Oddiyga o'tish uchun tugmani bosing
+Сейчас включён обычный VPN. Нажмите кнопку — переключимся на резервный	Hozir oddiy VPN yoqilgan. Zaxiraga o'tish uchun tugmani bosing
+Резервный VPN остановился. Подробности — в журнале (Настройки)	Zaxira VPN to'xtadi. Tafsilotlar — jurnalda (Sozlamalar)
+Какие приложения идут через VPN. Действует и для обычного, и для резервного VPN	Qaysi ilovalar VPN orqali o'tadi. Oddiy va zaxira VPN uchun amal qiladi
+Резерв	Zaxira

@@ -22,16 +22,11 @@
 Подписка выключена	Subscription disabled
 Подписка бессрочная	Subscription never expires
 Осталось %s · до %s	Days left: %s · until %s
-Не удалось включить WDTT	Could not turn on WDTT
-Аварийный туннель VK	VK emergency tunnel
-Когда обычный VPN не работает — трафик идёт через звонки VK	When regular VPN doesn't work, traffic goes through VK calls
 Добавьте хеш VK в боте	Add your VK hash in the bot
-Для вас нет серверов WDTT	No WDTT servers for you
 Хеш VK не задан. Добавьте его в боте и нажмите «Обновить подписку» на вкладке VPN.	VK hash is not set. Add it in the bot and tap «Refresh subscription» on the VPN tab.
 Страна	Country
 Страна изменена. Включите туннель снова	Country changed. Turn the tunnel on again
 Приложения	Apps
-Какие приложения идут через VPN. Действует и для обычного VPN, и для WDTT	Which apps go through VPN. Applies to both regular VPN and WDTT
 Все приложения через VPN	All apps through VPN
 Все, кроме выбранных	All except selected
 Только выбранные	Only selected
@@ -49,7 +44,6 @@
 %s из %s	%s of %s
 Сервер	Server
 Выйти из аккаунта	Sign out
-Журнал аварийного туннеля	Emergency tunnel log
 Последний сбой	Last crash
 Отчёт скопирован	Report copied
 Скопировать	Copy
@@ -65,7 +59,6 @@
 VPN отключится, данные подписки удалятся с телефона. Чтобы войти снова, понадобится токен из бота.	VPN will disconnect and subscription data will be removed from the phone. To sign in again you will need a token from the bot.
 Выйти	Sign out
 Отмена	Cancel
-Журнал WDTT	WDTT log
 Очистить	Clear
 Пусто	Empty
 Б	B
@@ -89,7 +82,6 @@ VPN отключится, данные подписки удалятся с те
 Подключение...	Connecting...
 Ожидание сети (Фоновый сон)	Waiting for network (sleep)
 Туннель активен	Tunnel active
-WDTT Туннель	WDTT Tunnel
 Уведомление о работе туннеля	Tunnel status notification
 Отключить	Disconnect
 VPN включён	VPN on
@@ -113,11 +105,18 @@ Android может усыплять VPN при выключенном экран
 Разрешить	Allow
 Разрешить работу в фоне	Allow background work
 Сайты не открываются: %s	Sites do not open: %s
-Сейчас включён WDTT. Нажмите кнопку — переключимся на обычный VPN	WDTT is on now. Tap the button to switch to the regular VPN
-Сейчас включён обычный VPN. Нажмите кнопку — переключимся на WDTT	The regular VPN is on now. Tap the button to switch to WDTT
 Сервер не отвечает через туннель. Попробуйте другую страну	The server does not respond through the tunnel. Try another country
 Туннель работает · потоков %s	Tunnel works · %s streams
 Чтобы VPN не «засыпал» при выключенном экране и быстро работал после разблокировки, разрешите приложению работать без ограничений батареи.	To keep the VPN from sleeping while the screen is off and working right after unlocking, allow the app to run without battery restrictions.
 нет ответа	no response
 туннель не работает	tunnel is not running
-Туннель WDTT остановился. Подробности — в журнале (Настройки)	The WDTT tunnel stopped. Details are in the log (Settings)
+Резервный VPN через VK	Backup VPN via VK
+Включайте, когда обычный VPN не подключается	Turn it on when the regular VPN doesn't connect
+Журнал резервного VPN	Backup VPN log
+Резервный VPN	Backup VPN
+Для вас нет серверов резервного VPN	No backup VPN servers for you
+Сейчас включён резервный VPN. Нажмите кнопку — переключимся на обычный	Backup VPN is on. Tap the button to switch to the regular one
+Сейчас включён обычный VPN. Нажмите кнопку — переключимся на резервный	Regular VPN is on. Tap the button to switch to the backup one
+Резервный VPN остановился. Подробности — в журнале (Настройки)	Backup VPN stopped. Details are in the log (Settings)
+Какие приложения идут через VPN. Действует и для обычного, и для резервного VPN	Which apps go through the VPN. Applies to both the regular and the backup VPN
+Резерв	Backup

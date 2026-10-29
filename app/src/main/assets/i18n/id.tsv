@@ -22,16 +22,11 @@
 Подписка выключена	Langganan dinonaktifkan
 Подписка бессрочная	Langganan tanpa batas waktu
 Осталось %s · до %s	Sisa hari: %s · sampai %s
-Не удалось включить WDTT	Gagal menyalakan WDTT
-Аварийный туннель VK	Terowongan darurat VK
-Когда обычный VPN не работает — трафик идёт через звонки VK	Saat VPN biasa tidak berfungsi, trafik lewat panggilan VK
 Добавьте хеш VK в боте	Tambahkan hash VK di bot
-Для вас нет серверов WDTT	Tidak ada server WDTT untuk Anda
 Хеш VK не задан. Добавьте его в боте и нажмите «Обновить подписку» на вкладке VPN.	Hash VK belum diatur. Tambahkan di bot lalu ketuk «Perbarui langganan» di tab VPN.
 Страна	Negara
 Страна изменена. Включите туннель снова	Negara diubah. Nyalakan terowongan lagi
 Приложения	Aplikasi
-Какие приложения идут через VPN. Действует и для обычного VPN, и для WDTT	Aplikasi mana yang lewat VPN. Berlaku untuk VPN biasa dan WDTT
 Все приложения через VPN	Semua aplikasi lewat VPN
 Все, кроме выбранных	Semua kecuali yang dipilih
 Только выбранные	Hanya yang dipilih
@@ -49,7 +44,6 @@
 %s из %s	%s dari %s
 Сервер	Server
 Выйти из аккаунта	Keluar dari akun
-Журнал аварийного туннеля	Log terowongan darurat
 Последний сбой	Crash terakhir
 Отчёт скопирован	Laporan disalin
 Скопировать	Salin
@@ -65,7 +59,6 @@
 VPN отключится, данные подписки удалятся с телефона. Чтобы войти снова, понадобится токен из бота.	VPN akan terputus dan data langganan dihapus dari ponsel. Untuk masuk lagi, Anda perlu token dari bot.
 Выйти	Keluar
 Отмена	Batal
-Журнал WDTT	Log WDTT
 Очистить	Bersihkan
 Пусто	Kosong
 Б	B
@@ -89,10 +82,19 @@ VPN отключится, данные подписки удалятся с те
 Подключение...	Menghubungkan...
 Ожидание сети (Фоновый сон)	Menunggu jaringan (tidur latar)
 Туннель активен	Terowongan aktif
-WDTT Туннель	Terowongan WDTT
 Уведомление о работе туннеля	Notifikasi terowongan
 Отключить	Putuskan
 VPN включён	VPN aktif
 выбранные приложения не установлены — измените список на вкладке «Приложения»	aplikasi yang dipilih tidak terpasang — ubah daftar di tab «Aplikasi»
 нет разрешения на VPN	tidak ada izin VPN
 Система не дала запустить туннель. Откройте приложение и попробуйте снова	Sistem tidak mengizinkan terowongan dimulai. Buka aplikasi dan coba lagi
+Резервный VPN через VK	VPN cadangan via VK
+Включайте, когда обычный VPN не подключается	Nyalakan saat VPN biasa tidak terhubung
+Журнал резервного VPN	Log VPN cadangan
+Резервный VPN	VPN cadangan
+Для вас нет серверов резервного VPN	Tidak ada server VPN cadangan untuk Anda
+Сейчас включён резервный VPN. Нажмите кнопку — переключимся на обычный	VPN cadangan aktif. Ketuk tombol untuk beralih ke VPN biasa
+Сейчас включён обычный VPN. Нажмите кнопку — переключимся на резервный	VPN biasa aktif. Ketuk tombol untuk beralih ke VPN cadangan
+Резервный VPN остановился. Подробности — в журнале (Настройки)	VPN cadangan berhenti. Detail ada di log (Pengaturan)
+Какие приложения идут через VPN. Действует и для обычного, и для резервного VPN	Aplikasi mana yang lewat VPN. Berlaku untuk VPN biasa dan cadangan
+Резерв	Cadangan
