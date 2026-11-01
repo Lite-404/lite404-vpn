@@ -1,11 +1,20 @@
-// Сборка релизных архивов для всех систем: go run ./pack 0.7.0 → dist/.
+// Сборка релизных архивов для всех систем: go run ./pack 0.9.0 → dist/.
 // Архивы пишутся из Go, чтобы на Windows у файлов Linux/macOS стояли права на запуск.
+//
+// Файл обновлений релиза (его читают кнопки «Проверить обновления» в приложениях):
+//
+//	go run ./pack manifest 0.9.0 21 notes.txt dist/Lite404-VPN-*.zip dist/*.tar.gz ../app/…/*.apk
+//
+// → dist/Lite404-VPN-update.json (версия, код версии Android, описание, ссылки, размеры, SHA-256).
 package main
 
 import (
 	"archive/tar"
 	"archive/zip"
 	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -114,7 +123,55 @@ func prepare() {
 	}
 }
 
+const releaseBase = "https://github.com/Lite-404/lite404-vpn/releases/download/"
+
+func manifest(args []string) {
+	if len(args) < 4 {
+		panic("go run ./pack manifest ВЕРСИЯ КОД_ANDROID notes.txt ФАЙЛЫ…")
+	}
+	version, notesFile, files := args[0], args[2], args[3:]
+	var code int
+	fmt.Sscan(args[1], &code)
+	notes, err := os.ReadFile(notesFile)
+	if err != nil || code <= 0 {
+		panic("нужны код версии Android и файл с описанием")
+	}
+	type file struct {
+		URL    string `json:"url"`
+		Size   int64  `json:"size"`
+		SHA256 string `json:"sha256"`
+	}
+	out := struct {
+		Version     string          `json:"version"`
+		AndroidCode int             `json:"android_code"`
+		Tag         string          `json:"tag"`
+		Notes       string          `json:"notes"`
+		Files       map[string]file `json:"files"`
+	}{version, code, "v" + version, strings.TrimSpace(strings.ReplaceAll(string(notes), "\r", "")), map[string]file{}}
+	for _, p := range files {
+		data, err := os.ReadFile(p)
+		if err != nil {
+			panic(err)
+		}
+		name := filepath.Base(p)
+		if !strings.HasPrefix(name, "Lite404-VPN-") {
+			panic("неожиданное имя файла: " + name)
+		}
+		sum := sha256.Sum256(data)
+		out.Files[name] = file{releaseBase + out.Tag + "/" + name, int64(len(data)), hex.EncodeToString(sum[:])}
+	}
+	data, _ := json.MarshalIndent(out, "", "  ")
+	if err := os.WriteFile("dist/Lite404-VPN-update.json", append(data, 10), 0o644); err != nil {
+		panic(err)
+	}
+	fmt.Printf("dist/Lite404-VPN-update.json: %d файлов\n", len(out.Files))
+}
+
 func main() {
+	if os.Args[1] == "manifest" {
+		manifest(os.Args[2:])
+		return
+	}
 	version := os.Args[1]
 	prepare()
 	readme, _ := os.ReadFile("README.txt")

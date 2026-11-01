@@ -176,6 +176,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         I18n.init(this)
         TunnelManager.initObservers(this)
+        Updater.cleanup(this)
         setContent {
             CompositionLocalProvider(LocalLayoutDirection provides if (I18n.isRtl) LayoutDirection.Rtl else LayoutDirection.Ltr) {
                 MaterialTheme(colorScheme = colors) {
@@ -926,6 +927,7 @@ private fun SettingsTab(model: AppModel) {
         }
         Section(tr("О приложении")) {
             InfoLine(tr("Версия"), BuildConfig.VERSION_NAME)
+            UpdateBlock(model)
             InfoLine(tr("Ядро"), "Xray $xrayVersion")
             InfoLine(tr("Лицензия"), "GPLv3")
             Text(tr("Основано на WDTT (amurcanov/proxy-turn-vk-android) и Xray-core."), color = Muted, fontSize = 13.sp)
@@ -969,6 +971,67 @@ private fun SettingsTab(model: AppModel) {
             confirmButton = { TextButton(onClick = { confirmLogout = false; model.logout() }) { Text(tr("Выйти"), color = Danger) } },
             dismissButton = { TextButton(onClick = { confirmLogout = false }) { Text(tr("Отмена")) } }
         )
+    }
+}
+
+/** «Проверить обновления»: проверка → окно с версией → загрузка → установщик Android. */
+@Composable
+private fun UpdateBlock(model: AppModel) {
+    val ctx = LocalContext.current
+    val st by Updater.state.collectAsState()
+    when (val s = st) {
+        is Updater.State.Checking -> Row(Modifier.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+            Spacer(Modifier.width(10.dp))
+            Text(tr("Проверяем обновления…"), color = Muted, fontSize = 14.sp)
+        }
+        is Updater.State.Downloading -> Column(Modifier.padding(vertical = 8.dp)) {
+            Text(tr("Скачиваем обновление… %s%", (s.progress * 100).toInt()), fontSize = 14.sp)
+            Spacer(Modifier.height(6.dp))
+            LinearProgressIndicator(progress = { s.progress }, modifier = Modifier.fillMaxWidth())
+            TextButton(onClick = { Updater.cancel(ctx) }) { Text(tr("Отмена")) }
+        }
+        else -> TextButton(onClick = { Updater.check() }) { Text(tr("Проверить обновления")) }
+    }
+    if (st is Updater.State.UpToDate) Text(tr("У вас последняя версия"), color = Muted, fontSize = 13.sp)
+    when (val s = st) {
+        is Updater.State.Available -> AlertDialog(
+            onDismissRequest = { Updater.dismiss() },
+            title = { Text(tr("Доступна версия %s", s.release.version)) },
+            text = {
+                Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
+                    if (s.release.notes.isNotBlank()) { Text(s.release.notes, fontSize = 14.sp); Spacer(Modifier.height(10.dp)) }
+                    Text(tr("Размер: %s МБ", String.format(Locale.US, "%.1f", s.release.size / 1048576.0)), color = Muted, fontSize = 13.sp)
+                    Text(tr("Во время установки VPN отключится — после обновления включите его снова."), color = Muted, fontSize = 13.sp)
+                }
+            },
+            confirmButton = { TextButton(onClick = { Updater.download(ctx, s.release) }) { Text(tr("Обновить")) } },
+            dismissButton = { TextButton(onClick = { Updater.dismiss() }) { Text(tr("Позже")) } }
+        )
+        is Updater.State.Ready -> {
+            // Android 8+ отдельно спрашивает, можно ли этому приложению ставить APK; ждём разрешения и ставим сами
+            var allowed by remember { mutableStateOf(Updater.canInstall(ctx)) }
+            LaunchedEffect(s.file) { while (true) { allowed = Updater.canInstall(ctx); delay(1000) } }
+            LaunchedEffect(s.file, allowed) { if (allowed) Updater.install(ctx, s.file) }
+            AlertDialog(
+                onDismissRequest = { Updater.dismiss() },
+                title = { Text(tr("Обновление скачано")) },
+                text = {
+                    Text(
+                        if (allowed) tr("Подтвердите установку в окне Android.")
+                        else tr("Разрешите Lite 404 VPN устанавливать приложения: включите переключатель и вернитесь назад — установка начнётся сама.")
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = { if (allowed) Updater.install(ctx, s.file) else Updater.openInstallPermission(ctx) }) {
+                        Text(if (allowed) tr("Установить") else tr("Открыть настройки"))
+                    }
+                },
+                dismissButton = { TextButton(onClick = { Updater.dismiss() }) { Text(tr("Позже")) } }
+            )
+        }
+        is Updater.State.Failed -> LaunchedEffect(s) { model.notify(s.message, ToastKind.Error); Updater.dismiss() }
+        else -> {}
     }
 }
 

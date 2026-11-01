@@ -13,3 +13,12 @@ VPN отключится, данные подписки удалятся с ко
 Системный прокси не включился — укажите вручную HTTP 127.0.0.1:10809	The system proxy did not turn on — set HTTP 127.0.0.1:10809 manually
 Резервный VPN для этой системы пока недоступен	The backup VPN is not available for this system yet
 Не удалось скачать правила маршрутизации — сейчас всё идёт через VPN	Could not download routing rules — everything goes through the VPN for now
+Устанавливаем обновление…	Installing update…
+Перезапуск…	Restarting…
+Обновлено до версии %s	Updated to version %s
+Программа перезапустится с новой версией. VPN отключится — после обновления включите его снова.	The app will restart with the new version. The VPN will disconnect — turn it back on after the update.
+Нет прав на запись в папку программы. Скачайте новую версию в боте.	No permission to write to the app folder. Download the new version from the bot.
+Новая версия не запускается на этом компьютере. Скачайте её в боте.	The new version does not run on this computer. Download it from the bot.
+Обновление установлено. Запустите программу заново.	The update is installed. Start the app again.
+Сначала проверьте обновления	Check for updates first
+Для этой системы обновление не выпускается	Updates are not released for this system

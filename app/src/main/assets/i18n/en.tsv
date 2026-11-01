@@ -132,3 +132,20 @@ Android может усыплять VPN при выключенном экран
 Изменения применятся при следующем подключении.	Changes apply on the next connection.
 Не настроено на сервере	Not configured on the server
 Не удалось скачать правила маршрутизации — сейчас всё идёт через VPN	Could not download routing rules — everything goes through the VPN for now
+Проверить обновления	Check for updates
+Проверяем обновления…	Checking for updates…
+У вас последняя версия	You have the latest version
+Доступна версия %s	Version %s is available
+Размер: %s МБ	Size: %s MB
+Во время установки VPN отключится — после обновления включите его снова.	The VPN will disconnect during installation — turn it back on after the update.
+Обновить	Update
+Позже	Later
+Скачиваем обновление… %s%	Downloading update… %s%
+Обновление скачано	Update downloaded
+Подтвердите установку в окне Android.	Confirm the installation in the Android window.
+Разрешите Lite 404 VPN устанавливать приложения: включите переключатель и вернитесь назад — установка начнётся сама.	Allow Lite 404 VPN to install apps: turn on the switch and go back — the installation will start automatically.
+Установить	Install
+Открыть настройки	Open settings
+Не удалось проверить обновления: %s	Could not check for updates: %s
+Не удалось скачать обновление: %s	Could not download the update: %s
+Файл обновления повреждён. Попробуйте ещё раз.	The update file is corrupted. Please try again.

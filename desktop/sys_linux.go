@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 func machineID() string {
@@ -59,4 +60,9 @@ func killIfWdtt(p *os.Process, pid int) {
 	if strings.Contains(string(out), "wdtt-client") {
 		p.Kill()
 	}
+}
+
+// detach — новая версия после обновления живёт отдельно от старой (своя сессия).
+func detach(cmd *exec.Cmd) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 }

@@ -98,3 +98,20 @@ VPN включён	VPN açık
 Какие приложения идут через VPN. Действует и для обычного, и для резервного VPN	Hangi uygulamaların VPN'den geçeceği. Hem normal hem yedek VPN için geçerlidir
 Резерв	Yedek
 Включайте, когда другие VPN не подключаются	Diğer VPN'ler bağlanmadığında açın
+Проверить обновления	Güncellemeleri denetle
+Проверяем обновления…	Güncellemeler denetleniyor…
+У вас последняя версия	En son sürümü kullanıyorsunuz
+Доступна версия %s	%s sürümü mevcut
+Размер: %s МБ	Boyut: %s MB
+Во время установки VPN отключится — после обновления включите его снова.	Kurulum sırasında VPN bağlantısı kesilecek — güncellemeden sonra yeniden açın.
+Обновить	Güncelle
+Позже	Daha sonra
+Скачиваем обновление… %s%	Güncelleme indiriliyor… %s%
+Обновление скачано	Güncelleme indirildi
+Подтвердите установку в окне Android.	Kurulumu Android penceresinde onaylayın.
+Разрешите Lite 404 VPN устанавливать приложения: включите переключатель и вернитесь назад — установка начнётся сама.	Lite 404 VPN'in uygulama yüklemesine izin verin: anahtarı açın ve geri dönün — kurulum kendiliğinden başlayacak.
+Установить	Yükle
+Открыть настройки	Ayarları aç
+Не удалось проверить обновления: %s	Güncellemeler denetlenemedi: %s
+Не удалось скачать обновление: %s	Güncelleme indirilemedi: %s
+Файл обновления повреждён. Попробуйте ещё раз.	Güncelleme dosyası bozuk. Lütfen tekrar deneyin.

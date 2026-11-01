@@ -98,3 +98,20 @@ VPN включён	VPN an
 Какие приложения идут через VPN. Действует и для обычного, и для резервного VPN	Welche Apps über das VPN laufen. Gilt für das normale und das Reserve-VPN
 Резерв	Reserve
 Включайте, когда другие VPN не подключаются	Schalten Sie es ein, wenn andere VPNs keine Verbindung herstellen
+Проверить обновления	Nach Updates suchen
+Проверяем обновления…	Suche nach Updates…
+У вас последняя версия	Sie haben die neueste Version
+Доступна версия %s	Version %s ist verfügbar
+Размер: %s МБ	Größe: %s MB
+Во время установки VPN отключится — после обновления включите его снова.	Während der Installation wird das VPN getrennt — schalten Sie es nach dem Update wieder ein.
+Обновить	Aktualisieren
+Позже	Später
+Скачиваем обновление… %s%	Update wird heruntergeladen… %s%
+Обновление скачано	Update heruntergeladen
+Подтвердите установку в окне Android.	Bestätigen Sie die Installation im Android-Fenster.
+Разрешите Lite 404 VPN устанавливать приложения: включите переключатель и вернитесь назад — установка начнётся сама.	Erlauben Sie Lite 404 VPN, Apps zu installieren: Schalter einschalten und zurückgehen — die Installation startet automatisch.
+Установить	Installieren
+Открыть настройки	Einstellungen öffnen
+Не удалось проверить обновления: %s	Updates konnten nicht geprüft werden: %s
+Не удалось скачать обновление: %s	Update konnte nicht heruntergeladen werden: %s
+Файл обновления повреждён. Попробуйте ещё раз.	Die Update-Datei ist beschädigt. Bitte erneut versuchen.

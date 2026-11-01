@@ -228,6 +228,8 @@
       <div class="section-title" data-t="О приложении"></div>
       <div class="section">
         <div id="about"></div>
+        <button class="textbtn" id="updBtn" data-t="Проверить обновления"></button>
+        <div class="muted xs" id="updState"></div>
         <div class="muted small" style="margin-top:4px" data-t="Основано на WDTT (amurcanov/proxy-turn-vk-android) и Xray-core."></div>
         <a class="textbtn" href="https://github.com/Lite-404/lite404-vpn" target="_blank" data-t="Исходный код"></a>
         <a class="textbtn" href="https://t.me/lite404bot" target="_blank" data-t="Бот @lite404bot"></a>
@@ -435,7 +437,44 @@ function render(s) {
   $('httpAddr').textContent = s.http; $('socksAddr').textContent = s.socks;
   $('proxyError').textContent = s.proxyError ? tr(s.proxyError) : '';
   fillInfo($('about'), [[tr('Версия'), s.version], [tr('Ядро'), 'Xray ' + s.xrayVersion], [tr('Лицензия'), 'GPLv3']]);
+  renderUpdate(s);
 }
+
+// ── обновление программы ──
+let shownVersion = null, updError = '';
+function renderUpdate(s) {
+  if (shownVersion && s.version !== shownVersion) toast(tr('Обновлено до версии %s', s.version), 'Success');
+  shownVersion = s.version;
+  const u = s.update, el = $('updState');
+  el.style.color = '';
+  if (!u) { el.textContent = ''; $('updBtn').disabled = false; return; }
+  $('updBtn').disabled = u.phase !== 'error';
+  if (u.phase === 'download') el.textContent = tr('Скачиваем обновление… %s%', Math.round(u.progress * 100));
+  else if (u.phase === 'install') el.textContent = tr('Устанавливаем обновление…');
+  else if (u.phase === 'restart') el.textContent = tr('Перезапуск…');
+  else if (u.phase === 'error') {
+    el.textContent = tr(u.error); el.style.color = 'var(--danger)';
+    if (u.error !== updError) toast(u.error, 'Error');
+  }
+  updError = u.phase === 'error' ? u.error : '';
+}
+$('updBtn').onclick = async () => {
+  $('updState').textContent = tr('Проверяем обновления…');
+  let r;
+  try { r = await api('update/check', {}); } catch (e) { r = { message: 'Ошибка сервера' }; }
+  $('updState').textContent = '';
+  if (r.message) return toast(tr('Не удалось проверить обновления: %s', tr(r.message)), 'Error');
+  if (!r.available) return toast(tr('У вас последняя версия'), 'Success');
+  const u = r.update, box = document.createElement('div');
+  box.style.whiteSpace = 'pre-line';
+  box.textContent = (u.notes ? u.notes + '
+
+' : '') + tr('Размер: %s МБ', (u.size / 1048576).toFixed(1)) + '
+
+' +
+    tr('Программа перезапустится с новой версией. VPN отключится — после обновления включите его снова.');
+  dialog(tr('Доступна версия %s', u.version), box, [[tr('Позже')], [tr('Обновить'), async () => { const s = await api('update/apply', {}); if (s.message) toast(s.message, 'Error'); }]]);
+};
 function fillInfo(el, rows) {
   el.innerHTML = '';
   for (const [k, v] of rows) {

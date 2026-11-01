@@ -98,3 +98,30 @@ VPN включён	VPN yoqilgan
 Какие приложения идут через VPN. Действует и для обычного, и для резервного VPN	Qaysi ilovalar VPN orqali o'tadi. Oddiy va zaxira VPN uchun amal qiladi
 Резерв	Zaxira
 Включайте, когда другие VPN не подключаются	Boshqa VPN ulanmasa, yoqing
+Проверить обновления	Yangilanishlarni tekshirish
+Проверяем обновления…	Yangilanishlar tekshirilmoqda…
+У вас последняя версия	Sizda eng soʻnggi versiya
+Доступна версия %s	%s versiyasi mavjud
+Размер: %s МБ	Hajmi: %s MB
+Во время установки VPN отключится — после обновления включите его снова.	Oʻrnatish vaqtida VPN uziladi — yangilangandan keyin uni qayta yoqing.
+Обновить	Yangilash
+Позже	Keyinroq
+Скачиваем обновление… %s%	Yangilanish yuklanmoqda… %s%
+Обновление скачано	Yangilanish yuklandi
+Подтвердите установку в окне Android.	Oʻrnatishni Android oynasida tasdiqlang.
+Разрешите Lite 404 VPN устанавливать приложения: включите переключатель и вернитесь назад — установка начнётся сама.	Lite 404 VPN ga ilovalarni oʻrnatishga ruxsat bering: kalitni yoqing va orqaga qayting — oʻrnatish oʻzi boshlanadi.
+Установить	Oʻrnatish
+Открыть настройки	Sozlamalarni ochish
+Не удалось проверить обновления: %s	Yangilanishlarni tekshirib boʻlmadi: %s
+Не удалось скачать обновление: %s	Yangilanishni yuklab boʻlmadi: %s
+Файл обновления повреждён. Попробуйте ещё раз.	Yangilanish fayli buzilgan. Qayta urinib koʻring.
+
+Устанавливаем обновление…	Yangilanish oʻrnatilmoqda…
+Перезапуск…	Qayta ishga tushirilmoqda…
+Обновлено до версии %s	%s versiyasiga yangilandi
+Программа перезапустится с новой версией. VPN отключится — после обновления включите его снова.	Dastur yangi versiya bilan qayta ishga tushadi. VPN uziladi — yangilangandan keyin uni qayta yoqing.
+Нет прав на запись в папку программы. Скачайте новую версию в боте.	Dastur papkasiga yozish huquqi yoʻq. Yangi versiyani botdan yuklab oling.
+Новая версия не запускается на этом компьютере. Скачайте её в боте.	Yangi versiya bu kompyuterda ishga tushmaydi. Uni botdan yuklab oling.
+Обновление установлено. Запустите программу заново.	Yangilanish oʻrnatildi. Dasturni qayta ishga tushiring.
+Сначала проверьте обновления	Avval yangilanishlarni tekshiring
+Для этой системы обновление не выпускается	Bu tizim uchun yangilanishlar chiqarilmaydi

@@ -98,3 +98,30 @@ VPN включён	VPN activado
 Какие приложения идут через VPN. Действует и для обычного, и для резервного VPN	Qué apps pasan por el VPN. Se aplica al VPN normal y al de respaldo
 Резерв	Respaldo
 Включайте, когда другие VPN не подключаются	Actívalo cuando otros VPN no se conecten
+Проверить обновления	Buscar actualizaciones
+Проверяем обновления…	Buscando actualizaciones…
+У вас последняя версия	Tienes la última versión
+Доступна версия %s	Versión %s disponible
+Размер: %s МБ	Tamaño: %s MB
+Во время установки VPN отключится — после обновления включите его снова.	La VPN se desconectará durante la instalación; vuelve a activarla después de actualizar.
+Обновить	Actualizar
+Позже	Más tarde
+Скачиваем обновление… %s%	Descargando actualización… %s%
+Обновление скачано	Actualización descargada
+Подтвердите установку в окне Android.	Confirma la instalación en la ventana de Android.
+Разрешите Lite 404 VPN устанавливать приложения: включите переключатель и вернитесь назад — установка начнётся сама.	Permite que Lite 404 VPN instale aplicaciones: activa el interruptor y vuelve atrás; la instalación empezará sola.
+Установить	Instalar
+Открыть настройки	Abrir ajustes
+Не удалось проверить обновления: %s	No se pudo buscar actualizaciones: %s
+Не удалось скачать обновление: %s	No se pudo descargar la actualización: %s
+Файл обновления повреждён. Попробуйте ещё раз.	El archivo de actualización está dañado. Inténtalo de nuevo.
+
+Устанавливаем обновление…	Instalando actualización…
+Перезапуск…	Reiniciando…
+Обновлено до версии %s	Actualizado a la versión %s
+Программа перезапустится с новой версией. VPN отключится — после обновления включите его снова.	El programa se reiniciará con la nueva versión. La VPN se desconectará; vuelve a activarla después de actualizar.
+Нет прав на запись в папку программы. Скачайте новую версию в боте.	No hay permiso para escribir en la carpeta del programa. Descarga la nueva versión en el bot.
+Новая версия не запускается на этом компьютере. Скачайте её в боте.	La nueva versión no funciona en este ordenador. Descárgala en el bot.
+Обновление установлено. Запустите программу заново.	La actualización está instalada. Vuelve a abrir el programa.
+Сначала проверьте обновления	Primero busca actualizaciones
+Для этой системы обновление не выпускается	No se publican actualizaciones para este sistema

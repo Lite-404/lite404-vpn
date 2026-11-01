@@ -82,3 +82,8 @@ func killIfWdtt(p *os.Process, pid int) {
 		p.Kill()
 	}
 }
+
+// detach — новая версия после обновления живёт отдельно от старой (DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP).
+func detach(cmd *exec.Cmd) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x00000008 | 0x00000200}
+}

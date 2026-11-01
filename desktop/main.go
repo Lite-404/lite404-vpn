@@ -62,6 +62,7 @@ type App struct {
 	speedDn  int64
 	lastUp   int64
 	lastDn   int64
+	upd      Updater
 }
 
 func (a *App) loadCached() {
@@ -384,6 +385,7 @@ func (a *App) state() obj {
 		"socks": fmt.Sprintf("127.0.0.1:%d", socksPort), "http": fmt.Sprintf("127.0.0.1:%d", httpPort),
 		"wdttActive": w.Active, "wdttStats": w.Stats, "speedUp": a.speedUp, "speedDown": a.speedDn,
 		"wdttAvailable": len(wdttClient) > 0, "now": time.Now().UnixMilli(),
+		"update": a.upd.State(),
 	}
 	if a.phase == "on" && a.mode == "xray" {
 		st["since"] = a.since.UnixMilli()
@@ -564,6 +566,17 @@ func (a *App) handler() http.Handler {
 		a.mu.Unlock()
 		reply(w, nil, nil)
 	})
+	mux.HandleFunc("POST /api/update/check", func(w http.ResponseWriter, r *http.Request) {
+		m, err := a.checkUpdate()
+		var u any
+		if m != nil {
+			u = obj{"version": m.Version, "notes": m.Notes, "size": m.Files[assetName()].Size}
+		}
+		reply(w, err, obj{"update": u, "available": u != nil})
+	})
+	mux.HandleFunc("POST /api/update/apply", func(w http.ResponseWriter, r *http.Request) {
+		reply(w, a.startUpdate(), nil)
+	})
 	mux.HandleFunc("POST /api/logout", func(w http.ResponseWriter, r *http.Request) {
 		a.mu.Lock()
 		a.stopAllLocked()
@@ -597,6 +610,12 @@ func (a *App) quit() {
 }
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "--version" { // проверка новой версии при обновлении
+		fmt.Println(version)
+		return
+	}
+	afterUpdate := os.Getenv("LITE404_AFTER_UPDATE") != ""
+	os.Unsetenv("LITE404_AFTER_UPDATE")
 	dir := dataDir()
 	if f, err := os.OpenFile(filepath.Join(dir, "lite404.log"), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600); err == nil {
 		log.SetOutput(f)
@@ -605,10 +624,17 @@ func main() {
 	os.Setenv("XRAY_LOCATION_ASSET", filepath.Join(dir, "geo"))
 
 	ln, err := net.Listen("tcp", uiAddr)
+	for i := 0; err != nil && afterUpdate && i < 60; i++ { // старая версия ещё выходит
+		time.Sleep(500 * time.Millisecond)
+		ln, err = net.Listen("tcp", uiAddr)
+	}
 	if err != nil { // уже запущено — просто открываем окно
-		openBrowser("http://" + uiAddr + "/")
+		if !afterUpdate {
+			openBrowser("http://" + uiAddr + "/")
+		}
 		return
 	}
+	cleanupUpdate()
 	a := &App{s: loadSettings(), conn: -1, phase: "off", wdtt: &Wdtt{}}
 	a.wdtt.onConfig = a.onWdttConfig
 	a.wdtt.onFatal = a.onWdttFatal
@@ -634,7 +660,7 @@ func main() {
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 	go func() { <-sig; a.quit() }()
 
-	if os.Getenv("LITE404_NO_BROWSER") == "" {
+	if os.Getenv("LITE404_NO_BROWSER") == "" && !afterUpdate { // после обновления открытая страница подхватит новую версию сама
 		openBrowser("http://" + uiAddr + "/")
 	}
 	srv := &http.Server{Handler: a.handler(), ReadHeaderTimeout: 10 * time.Second}

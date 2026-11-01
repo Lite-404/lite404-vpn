@@ -98,3 +98,30 @@ VPN включён	VPN aktif
 Какие приложения идут через VPN. Действует и для обычного, и для резервного VPN	Aplikasi mana yang lewat VPN. Berlaku untuk VPN biasa dan cadangan
 Резерв	Cadangan
 Включайте, когда другие VPN не подключаются	Nyalakan saat VPN lain tidak terhubung
+Проверить обновления	Periksa pembaruan
+Проверяем обновления…	Memeriksa pembaruan…
+У вас последняя версия	Anda memakai versi terbaru
+Доступна версия %s	Versi %s tersedia
+Размер: %s МБ	Ukuran: %s MB
+Во время установки VPN отключится — после обновления включите его снова.	VPN akan terputus selama pemasangan — nyalakan lagi setelah pembaruan.
+Обновить	Perbarui
+Позже	Nanti
+Скачиваем обновление… %s%	Mengunduh pembaruan… %s%
+Обновление скачано	Pembaruan terunduh
+Подтвердите установку в окне Android.	Konfirmasi pemasangan di jendela Android.
+Разрешите Lite 404 VPN устанавливать приложения: включите переключатель и вернитесь назад — установка начнётся сама.	Izinkan Lite 404 VPN memasang aplikasi: nyalakan sakelar lalu kembali — pemasangan akan dimulai otomatis.
+Установить	Pasang
+Открыть настройки	Buka pengaturan
+Не удалось проверить обновления: %s	Tidak dapat memeriksa pembaruan: %s
+Не удалось скачать обновление: %s	Tidak dapat mengunduh pembaruan: %s
+Файл обновления повреждён. Попробуйте ещё раз.	File pembaruan rusak. Coba lagi.
+
+Устанавливаем обновление…	Memasang pembaruan…
+Перезапуск…	Memulai ulang…
+Обновлено до версии %s	Diperbarui ke versi %s
+Программа перезапустится с новой версией. VPN отключится — после обновления включите его снова.	Program akan dimulai ulang dengan versi baru. VPN akan terputus — nyalakan lagi setelah pembaruan.
+Нет прав на запись в папку программы. Скачайте новую версию в боте.	Tidak ada izin menulis ke folder program. Unduh versi baru di bot.
+Новая версия не запускается на этом компьютере. Скачайте её в боте.	Versi baru tidak berjalan di komputer ini. Unduh di bot.
+Обновление установлено. Запустите программу заново.	Pembaruan terpasang. Jalankan program lagi.
+Сначала проверьте обновления	Periksa pembaruan terlebih dahulu
+Для этой системы обновление не выпускается	Pembaruan tidak dirilis untuk sistem ini
