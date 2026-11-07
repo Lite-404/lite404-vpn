@@ -96,31 +96,56 @@ object AppApi {
             override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
         }
         val ssl = SSLContext.getInstance("TLS").apply { init(null, arrayOf(tm), null) }
-        val c = URL("https://${token.addr}/app/v1/config").openConnection() as HttpsURLConnection
+        val headers = linkedMapOf(
+            "Authorization" to "Bearer ${token.key}",
+            "X-HWID" to hwid(ctx),
+            "X-Device-OS" to "Android",
+            "X-Ver-OS" to Build.VERSION.RELEASE,
+            "X-Device-Model" to "${Build.MANUFACTURER} ${Build.MODEL}".trim(),
+            "User-Agent" to "Lite404VPN/${BuildConfig.VERSION_NAME} (Android)",
+            "Content-Type" to "application/json"
+        )
+        val payload = "{}".toByteArray()
+        val (code, body) = try {
+            post(ssl, token.addr, headers, payload)
+        } catch (e: java.io.IOException) {
+            // Имя не нашлось / не тот сервер / не соединилось — пробуем напрямую по IP с тем же SNI
+            val host = DirectHttps.splitAddr(token.addr).first
+            var res: Pair<Int, String>? = null
+            for ((ip, port) in DirectHttps.fallbacksFor(token.addr)) {
+                res = runCatching {
+                    DirectHttps.post(ssl, ip, port, host, PATH, headers, payload, 10000, 20000)
+                }.onFailure { e.addSuppressed(it) }.getOrNull()
+                if (res != null) break
+            }
+            res ?: throw e
+        }
+        val err = runCatching { JSONObject(body).optString("error") }.getOrDefault("")
+        when {
+            code == 403 -> throw ApiException("bad_token", tr("Токен не подходит. Возьмите новый в боте @lite404bot"))
+            code == 429 -> throw ApiException("rate_limit", tr("Слишком часто. Попробуйте через минуту"))
+            code != 200 -> throw ApiException(err.ifBlank { "http_$code" }, tr("Сервер ответил %s", code))
+        }
+        return body
+    }
+
+    private const val PATH = "/app/v1/config"
+
+    /** Обычный путь: по имени из токена, через системный DNS. */
+    private fun post(ssl: SSLContext, addr: String, headers: Map<String, String>, payload: ByteArray): Pair<Int, String> {
+        val c = URL("https://$addr$PATH").openConnection() as HttpsURLConnection
         c.sslSocketFactory = ssl.socketFactory
         c.hostnameVerifier = javax.net.ssl.HostnameVerifier { _, _ -> true } // доверие — по отпечатку
         c.connectTimeout = 10000
         c.readTimeout = 20000
         c.requestMethod = "POST"
         c.doOutput = true
-        c.setRequestProperty("Authorization", "Bearer ${token.key}")
-        c.setRequestProperty("X-HWID", hwid(ctx))
-        c.setRequestProperty("X-Device-OS", "Android")
-        c.setRequestProperty("X-Ver-OS", Build.VERSION.RELEASE)
-        c.setRequestProperty("X-Device-Model", "${Build.MANUFACTURER} ${Build.MODEL}".trim())
-        c.setRequestProperty("User-Agent", "Lite404VPN/${BuildConfig.VERSION_NAME} (Android)")
-        c.setRequestProperty("Content-Type", "application/json")
+        headers.forEach { (k, v) -> c.setRequestProperty(k, v) }
         try {
-            c.outputStream.use { it.write("{}".toByteArray()) }
+            c.outputStream.use { it.write(payload) }
             val code = c.responseCode
             val body = (if (code < 400) c.inputStream else c.errorStream)?.bufferedReader()?.use { it.readText() } ?: ""
-            val err = runCatching { JSONObject(body).optString("error") }.getOrDefault("")
-            when {
-                code == 403 -> throw ApiException("bad_token", tr("Токен не подходит. Возьмите новый в боте @lite404bot"))
-                code == 429 -> throw ApiException("rate_limit", tr("Слишком часто. Попробуйте через минуту"))
-                code != 200 -> throw ApiException(err.ifBlank { "http_$code" }, tr("Сервер ответил %s", code))
-            }
-            return body
+            return code to body
         } finally {
             c.disconnect()
         }

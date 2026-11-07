@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
@@ -11,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"runtime"
 	"strings"
@@ -97,21 +99,18 @@ func FetchConfig(t *Token, hwid string) (*AppConfig, []byte, error) {
 		}
 		return nil
 	}
-	client := &http.Client{
-		Timeout: 25 * time.Second,
-		Transport: &http.Transport{
-			Proxy:           nil, // напрямую, даже если включён системный прокси
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true, VerifyPeerCertificate: pin},
-		},
+	tlsConf := &tls.Config{InsecureSkipVerify: true, VerifyPeerCertificate: pin}
+	resp, err := postConfig(t, hwid, tlsConf, nil)
+	if err != nil {
+		// Имя не нашлось / не тот сервер / не соединилось — напрямую по IP с тем же SNI и Host
+		host, port, _ := net.SplitHostPort(t.Addr)
+		for _, ip := range apiFallbackIPs[strings.ToLower(host)] {
+			if r, e2 := postConfig(t, hwid, tlsConf, &fallbackDial{addr: net.JoinHostPort(ip, port)}); e2 == nil {
+				resp, err = r, nil
+				break
+			}
+		}
 	}
-	req, _ := http.NewRequest("POST", "https://"+t.Addr+"/app/v1/config", bytes.NewReader([]byte("{}")))
-	req.Header.Set("Authorization", "Bearer "+t.Key)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-HWID", hwid)
-	req.Header.Set("X-Device-OS", osName())
-	req.Header.Set("X-Device-Model", "Lite404 VPN Desktop")
-	req.Header.Set("User-Agent", fmt.Sprintf("Lite404VPN/%s (%s)", version, osName()))
-	resp, err := client.Do(req)
 	if err != nil {
 		return nil, nil, fmt.Errorf("нет связи с сервером: %v", err)
 	}
@@ -130,6 +129,42 @@ func FetchConfig(t *Token, hwid string) (*AppConfig, []byte, error) {
 		return nil, nil, errors.New("сервер прислал непонятный ответ")
 	}
 	return &c, body, nil
+}
+
+// apiFallbackIPs — имя сервера из токена → его IP. Нужен, когда у пользователя не работает DNS
+// или по имени отвечает не наш сервер: соединяемся с IP, а SNI и Host остаются прежними
+// (без SNI nginx соединение сбрасывает), доверие — по отпечатку сертификата.
+var apiFallbackIPs = map[string][]string{"app.barked.fun": {"88.151.114.227"}}
+
+type fallbackDial struct{ addr string }
+
+func (f *fallbackDial) dial(ctx context.Context, network, _ string) (net.Conn, error) {
+	return (&net.Dialer{Timeout: 10 * time.Second}).DialContext(ctx, network, f.addr)
+}
+
+// postConfig — POST /app/v1/config; via != nil — соединение на заданный адрес вместо DNS.
+func postConfig(t *Token, hwid string, tlsConf *tls.Config, via *fallbackDial) (*http.Response, error) {
+	tr := &http.Transport{
+		Proxy:               nil, // напрямую, даже если включён системный прокси
+		TLSClientConfig:     tlsConf,
+		TLSHandshakeTimeout: 15 * time.Second,
+	}
+	if via != nil {
+		tr.DialContext = via.dial
+	}
+	client := &http.Client{Timeout: 25 * time.Second, Transport: tr}
+	req, _ := http.NewRequest("POST", "https://"+t.Addr+"/app/v1/config", bytes.NewReader([]byte("{}")))
+	req.Header.Set("Authorization", "Bearer "+t.Key)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-HWID", hwid)
+	req.Header.Set("X-Device-OS", osName())
+	req.Header.Set("X-Device-Model", "Lite404 VPN Desktop")
+	req.Header.Set("User-Agent", fmt.Sprintf("Lite404VPN/%s (%s)", version, osName()))
+	resp, err := client.Do(req)
+	if err != nil {
+		tr.CloseIdleConnections()
+	}
+	return resp, err
 }
 
 func ErrorText(code string) string {
