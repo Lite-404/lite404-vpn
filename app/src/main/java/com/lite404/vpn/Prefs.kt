@@ -61,6 +61,31 @@ class Prefs(ctx: Context) {
         get() = if (p.getString("routing_mode", Routing.MODE_SMART) == Routing.MODE_OFF) Routing.MODE_OFF else Routing.MODE_SMART
         set(v) = p.edit().putString("routing_mode", v).apply()
 
+    /** Свои списки основного VPN (см. [Lists]): готовые списки «напрямую», свои адреса напрямую и через VPN. */
+    var readyLists: Set<String>
+        get() = p.getStringSet("ready_lists", emptySet())?.toSet() ?: emptySet()
+        set(v) = p.edit().putStringSet("ready_lists", v).apply()
+
+    var customDirect: String
+        get() = p.getString("custom_direct", "") ?: ""
+        set(v) = p.edit().putString("custom_direct", v).apply()
+
+    var customProxy: String
+        get() = p.getString("custom_proxy", "") ?: ""
+        set(v) = p.edit().putString("custom_proxy", v).apply()
+
+    fun userLists() = Lists.User(readyLists, customDirect, customProxy)
+
+    /** Российские приложения, которые уже предлагались автоматически (см. [AutoApps]); снятые вручную не возвращаются. */
+    var autoAppsSeen: Set<String>
+        get() = p.getStringSet("auto_apps_seen", emptySet())?.toSet() ?: emptySet()
+        set(v) = p.edit().putStringSet("auto_apps_seen", v).apply()
+
+    /** Автовыбор приложений уже выполнялся (первый запуск). */
+    var autoAppsDone: Boolean
+        get() = p.getBoolean("auto_apps_done", false)
+        set(v) = p.edit().putBoolean("auto_apps_done", v).apply()
+
     /** Локальная сеть (192.168.x.x и др.) мимо VPN — отдельно для основного и резервного VPN. */
     var lanDirectXray: Boolean
         get() = p.getBoolean("lan_direct_xray", true)

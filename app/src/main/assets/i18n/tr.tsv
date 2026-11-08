@@ -52,7 +52,7 @@
 Версия	Sürüm
 Ядро	Çekirdek
 Лицензия	Lisans
-Основано на WDTT (amurcanov/proxy-turn-vk-android) и Xray-core.	WDTT (amurcanov/proxy-turn-vk-android) ve Xray-core tabanlıdır.
+Основано на WDTT (amurcanov/proxy-turn-vk-android) и sing-box-extended.	WDTT (amurcanov/proxy-turn-vk-android) ve sing-box-extended tabanlıdır.
 Исходный код	Kaynak kodu
 Бот @lite404bot	Bot @lite404bot
 Выйти из аккаунта?	Hesaptan çıkılsın mı?
@@ -115,3 +115,28 @@ VPN включён	VPN açık
 Не удалось проверить обновления: %s	Güncellemeler denetlenemedi: %s
 Не удалось скачать обновление: %s	Güncelleme indirilemedi: %s
 Файл обновления повреждён. Попробуйте ещё раз.	Güncelleme dosyası bozuk. Lütfen tekrar deneyin.
+Российские сервисы	Rus hizmetleri
+Госуслуги, банки, магазины, доставка, соцсети, операторы связи	Gosuslugi, bankalar, mağazalar, teslimat, sosyal ağlar, mobil operatörler
+Все российские сайты	Tüm Rus siteleri
+Все сайты в зонах .ru, .рф, .su и все российские IP-адреса	.ru, .рф, .su alanlarındaki tüm siteler ve tüm Rus IP adresleri
+Сайты только для России	Yalnızca Rusya'ya özel siteler
+Сайты, которые открываются только с российского IP: часть банков, сервисы проверки IP и др.	Yalnızca Rus IP'sinden açılan siteler: bazı bankalar, IP kontrol hizmetleri vb.
+Игры	Oyunlar
+Обновления Windows, Office, Xbox	Windows, Office, Xbox güncellemeleri
+iCloud, App Store, обновления	iCloud, App Store, güncellemeler
+Готовые списки недоступны — правила не скачались или не настроены на сервере	Hazır listeler kullanılamıyor — kurallar indirilemedi veya sunucuda ayarlanmamış
+Российские приложения (%s) идут мимо VPN. Изменить — во вкладке «Приложения»	Rus uygulamaları (%s) VPN dışında çalışıyor. Değiştirmek için «Uygulamalar» sekmesi
+Новые российские приложения (%s) идут мимо VPN	Yeni Rus uygulamaları (%s) VPN dışında çalışıyor
+Российских приложений мимо VPN: %s	VPN dışındaki Rus uygulamaları: %s
+Российские приложения — мимо VPN	Rus uygulamaları — VPN dışında
+Яндекс, VK, Госуслуги, маркетплейсы, магазины, доставка, банки, операторы связи — они работают с российским IP	Yandex, VK, Gosuslugi, pazaryerleri, mağazalar, teslimat, bankalar, mobil operatörler — Rus IP'siyle çalışırlar
+Свои списки	Özel listeler
+Готовые списки и свои сайты — напрямую или через VPN	Hazır listeler ve kendi siteleriniz — doğrudan veya VPN üzerinden
+Выбрано: %s	Seçildi: %s
+Действуют для основного VPN в любом режиме маршрутизации. Изменения применятся при следующем подключении.	Ana VPN için her yönlendirme modunda geçerlidir. Değişiklikler bir sonraki bağlantıda uygulanır.
+Готовые списки — напрямую	Hazır listeler — doğrudan
+Свои сайты напрямую	Kendi sitelerim doğrudan
+Свои сайты через VPN	Kendi sitelerim VPN üzerinden
+Эти сайты всегда идут через VPN, даже если они есть в списках «напрямую».	Bu siteler «doğrudan» listelerinde olsalar bile her zaman VPN üzerinden gider.
+По одному в строке: сайт (example.ru — вместе с поддоменами), IP-адрес или подсеть (10.0.0.0/8).	Her satıra bir tane: site (example.ru — alt alan adlarıyla birlikte), IP adresi veya alt ağ (10.0.0.0/8).
+Сайтов: %s, адресов: %s	Siteler: %s, adresler: %s

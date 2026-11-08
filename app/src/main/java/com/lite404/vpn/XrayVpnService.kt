@@ -17,13 +17,14 @@ import android.os.HandlerThread
 import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.util.Log
-import libv2ray.CoreCallbackHandler
-import libv2ray.CoreController
-import libv2ray.Libv2ray
+import com.lite404.vpncore.Platform
+import com.lite404.vpncore.Vpncore
 import java.io.File
+import java.net.NetworkInterface
 
 /**
- * Обычный VPN: ядро Xray (libv2ray) в отдельном процессе «:xray».
+ * Обычный VPN: ядро sing-box-extended (библиотека vpncore) в отдельном процессе «:xray».
+ * Конфиг сервера приходит в формате Xray (xray.json), ядро переводит его в свой формат при запуске.
  * Состояние пишется в файлы (их читает приложение из основного процесса):
  *   xray_state  running | connecting | stopped | error:<текст>
  *   xray_test   ok:<мс> | fail:<текст> | testing — результат проверки соединения через туннель
@@ -49,6 +50,9 @@ class XrayVpnService : VpnService() {
 
         /** Пауза после смены сети, чтобы не дёргать туннель на каждое мигание Wi-Fi. */
         private const val NETWORK_SETTLE_MS = 1500L
+        /** Адреса TUN — те же, что в [establishTun]: ядру они нужны для своего сетевого стека. */
+        private const val TUN_ADDRESSES = "10.10.14.1/30,fd66:6c34:3034::1/126"
+
         /** Сколько ждём возврата сети, прежде чем считать её потерянной. */
         private const val NETWORK_LOSS_GRACE_MS = 3000L
 
@@ -127,7 +131,11 @@ class XrayVpnService : VpnService() {
     }
 
     private var tun: ParcelFileDescriptor? = null
-    private var controller: CoreController? = null
+    /** Конфиг sing-box текущего запуска (переведённый из xray.json); null — ядро не запущено. */
+    private var coreConfig: String? = null
+    private val platform = object : Platform {
+        override fun protect(fd: Int): Boolean = this@XrayVpnService.protect(fd)
+    }
     @Volatile private var stopping = false
     @Volatile private var stopped = false
     private val lock = Any()
@@ -164,6 +172,7 @@ class XrayVpnService : VpnService() {
             currentNetwork = network
             lastNetwork = network
             runCatching { setUnderlyingNetworks(arrayOf(network)) }
+            reportNetwork(network)
             if (previous == null) return                        // первое уведомление сразу после подписки
             if (previous == network && !networkLost) return     // та же сеть, соединения живы — ничего не трогаем
             networkLost = false
@@ -243,9 +252,9 @@ class XrayVpnService : VpnService() {
             .addDnsServer("1.1.1.1")
         // весь интернет, кроме локальной сети (192.168.x, 10.x, 172.16–31.x): к ней — напрямую, мимо VPN
         if (lanDirect) for ((ip, prefix) in Lan.PUBLIC_IPV4) b.addRoute(ip, prefix) else b.addRoute("0.0.0.0", 0)
-        // IPv6 тоже заворачиваем в туннель (иначе утечка мимо VPN); Xray отвечает на него отказом сразу
+        // IPv6 тоже заворачиваем в туннель (иначе утечка мимо VPN); ядро отвечает на него отказом сразу
         runCatching { b.addAddress("fd66:6c34:3034::1", 126); b.addRoute("::", 0) }
-        // туннелирование по приложениям; своё приложение всегда мимо VPN, иначе ядро Xray зациклится само на себя
+        // туннелирование по приложениям; своё приложение всегда мимо VPN, иначе ядро зациклится само на себя
         if (appsMode == "include") {
             var added = 0
             for (a in apps) if (a != packageName && runCatching { b.addAllowedApplication(a) }.isSuccess) added++
@@ -259,19 +268,11 @@ class XrayVpnService : VpnService() {
         return b.establish() ?: throw IllegalStateException(tr("нет разрешения на VPN"))
     }
 
-    /** Ядро само сообщает о падении через shutdown(); реагируем, только если это текущее ядро, а не старое после пересборки. */
-    private fun newController(): CoreController {
-        var self: CoreController? = null
-        val c = Libv2ray.newCoreController(object : CoreCallbackHandler {
-            override fun onEmitStatus(code: Long, msg: String?): Long { Log.d(TAG, "status $code $msg"); return 0 }
-            override fun shutdown(): Long {
-                if (!stopping && self != null && self === controller) stopVpn()
-                return 0
-            }
-            override fun startup(): Long = 0
-        })
-        self = c
-        return c
+    /** Основная сеть телефона → ядру (имя и номер интерфейса): по ней оно понимает, что сеть сменилась. */
+    private fun reportNetwork(network: Network?) {
+        val name = network?.let { connectivity?.getLinkProperties(it)?.interfaceName }
+        val index = name?.let { runCatching { NetworkInterface.getByName(it)?.index }.getOrNull() } ?: -1
+        runCatching { Vpncore.setDefaultInterface(name ?: "", if (name == null) -1 else index) }
     }
 
     /** Запуск. true — туннель поднят. */
@@ -281,14 +282,19 @@ class XrayVpnService : VpnService() {
             stopping = true
             cleanup()
             stopping = false
-            val config = configFile(this).readText()
             XrayCore.initEnv(this)
+            // подробный журнал ядра — только для диагностики: если в Android/data/<пакет>/files есть файл core.debug,
+            // журнал пишется туда же в core.log (виден через adb и файловый менеджер); иначе журнала нет
+            val ext = getExternalFilesDir(null)
+            val log = if (ext != null && File(ext, "core.debug").exists()) File(ext, "core.log").apply { delete() }.absolutePath else ""
+            val config = Vpncore.convert(configFile(this).readText(), XrayCore.geoDir(this).absolutePath, TUN_ADDRESSES, log, if (log != "") "debug" else "")
             watchNetwork()
             val fd = establishTun()
             tun = fd
-            val c = newController()
-            controller = c
-            c.startLoop(config, fd.fd)
+            reportNetwork(currentNetwork) // ядро узнаёт основную сеть ещё до запуска
+            Vpncore.start(config, fd.fd, platform)
+            coreConfig = config
+            reportNetwork(currentNetwork)
             if (stopped) return false
             writeState(this, "running")
             true
@@ -304,26 +310,22 @@ class XrayVpnService : VpnService() {
     /** Пересборка при смене сети: новый TUN → новое ядро → закрыть старое. Старые соединения рвутся сразу. */
     private fun rebuildForNetwork() {
         synchronized(lock) {
-            if (stopped || controller == null) return
+            val config = coreConfig
+            if (stopped || config == null) return
             val oldTun = tun
             var newTun: ParcelFileDescriptor? = null
             try {
                 newTun = establishTun()
-                stopping = true
-                runCatching { controller?.stopLoop() }
-                stopping = false
-                val c = newController()
-                controller = c
                 tun = newTun
-                c.startLoop(configFile(this).readText(), newTun.fd)
+                Vpncore.start(config, newTun.fd, platform)   // старое ядро останавливается внутри
+                reportNetwork(currentNetwork)
                 runCatching { oldTun?.close() }
                 Log.d(TAG, "туннель пересобран под новую сеть")
             } catch (e: Throwable) {
-                stopping = false
                 if (tun !== newTun) runCatching { newTun?.close() }
                 if (tun !== oldTun) runCatching { oldTun?.close() }
                 Log.e(TAG, "пересборка не удалась — полный перезапуск", e)
-                CrashLog.save(e, "Xray: пересборка при смене сети (без вылета)")
+                CrashLog.save(e, "VPN: пересборка при смене сети (без вылета)")
                 startVpn()
             }
         }
@@ -334,10 +336,9 @@ class XrayVpnService : VpnService() {
         writeTest(this, "testing")
         var last = ""
         repeat(attempts) { n ->
-            val c = synchronized(lock) { controller }
-            if (c == null) { writeTest(this, "fail:" + tr("туннель не работает")); return }
+            if (synchronized(lock) { coreConfig } == null) { writeTest(this, "fail:" + tr("туннель не работает")); return }
             try {
-                val ms = c.measureDelay(url)
+                val ms = Vpncore.urlTest(url, 10_000)
                 if (ms > 0) { writeTest(this, "ok:$ms"); return }
                 last = tr("нет ответа")
             } catch (e: Exception) {
@@ -372,8 +373,8 @@ class XrayVpnService : VpnService() {
     }
 
     private fun cleanup() {
-        controller?.let { runCatching { it.stopLoop() } }
-        controller = null
+        if (coreConfig != null) runCatching { Vpncore.stop() }
+        coreConfig = null
         runCatching { tun?.close() }
         tun = null
     }

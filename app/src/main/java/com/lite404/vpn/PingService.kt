@@ -3,7 +3,7 @@ package com.lite404.vpn
 import android.app.Service
 import android.content.Intent
 import android.os.IBinder
-import libv2ray.Libv2ray
+import com.lite404.vpncore.Vpncore
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -14,7 +14,7 @@ import java.util.concurrent.TimeUnit
 /**
  * Замер задержки до серверов — в отдельном процессе «:ping».
  *
- * Ядро Xray (Go) нельзя загружать в основной процесс: там уже работает WireGuard от WDTT (тоже Go).
+ * Ядро (sing-box, Go) нельзя загружать в основной процесс: там уже работает WireGuard от WDTT (тоже Go).
  * Две среды Go в одном процессе падают с SIGILL — именно так вылетала версия 0.6.0.
  *
  * Вход: EXTRA_CONFIGS — JSON-массив конфигов серверов, EXTRA_URL, EXTRA_ID.
@@ -53,7 +53,8 @@ class PingService : Service() {
             val left = CountDownLatch(n)
             for (i in 0 until n) {
                 pool.execute {
-                    val ms = runCatching { Libv2ray.measureOutboundDelay(XrayConfig.forPing(configs.getString(i)), url) }
+                    // временное ядро только с выходом к серверу (его выбирает само ядро из конфига подписки)
+                    val ms = runCatching { Vpncore.ping(configs.getString(i), url, 10_000) }
                         .getOrDefault(-1L).let { if (it <= 0) -1L else it }
                     synchronized(lock) { if (!finished) result.put(i.toString(), ms) }
                     runCatching { flush(false) }

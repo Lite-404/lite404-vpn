@@ -28,6 +28,7 @@ type Settings struct {
 	TestAfter   bool            `json:"test_after_connect"`
 	LanWdtt     bool            `json:"lan_direct_wdtt"`
 	WdttServer  int             `json:"wdtt_server"`
+	Lists       UserLists       `json:"lists"` // свои списки основного VPN
 }
 
 func dataDir() string {

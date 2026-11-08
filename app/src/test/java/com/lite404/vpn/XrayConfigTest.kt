@@ -69,4 +69,39 @@ class XrayConfigTest {
         val c = JSONObject(XrayConfig.build(server, null, lanDirect = false))
         assertTrue(!c.getJSONObject("routing").getJSONArray("rules").toString().contains("192.168.0.0/16"))
     }
+
+    @Test
+    fun userLists_orderAndParsing() {
+        val user = Lists.User(
+            ready = setOf("ru-services", "games"),
+            direct = "https://Example.ru/path\n# комментарий\n203.0.113.0/24, 198.51.100.7\nпример.рф\nмусор!!",
+            proxy = "*.youtube.com",
+        )
+        val (d, i) = Lists.parse(user.direct)
+        assertEquals(listOf("domain:example.ru", "domain:xn--e1afmkfd.xn--p1ai"), d)
+        assertEquals(listOf("203.0.113.0/24", "198.51.100.7"), i)
+        for (name in listOf("happ", "incy")) {
+            val c = JSONObject(XrayConfig.build(server, profile(name), user = user))
+            val rules = c.getJSONObject("routing").getJSONArray("rules")
+            val tags = (0 until rules.length()).map { rules.getJSONObject(it) }
+            val firstBlock = tags.indexOfFirst { it.optString("outboundTag") == "block" }
+            val userProxy = tags.indexOfFirst { it.toString().contains("domain:youtube.com") }
+            val userDirect = tags.indexOfFirst { it.toString().contains("domain:example.ru") }
+            val games = tags.indexOfFirst { it.toString().contains("ext:roscom-geosite.dat:steam") }
+            val profileProxy = tags.indexOfFirst { it.optString("outboundTag") == "proxy" && it.has("domain") && !it.toString().contains("youtube") }
+            assertTrue("$name: $tags", firstBlock in 0 until userProxy && userProxy < userDirect && userDirect < games)
+            assertEquals("proxy", tags[userProxy].getString("outboundTag"))
+            assertTrue(profileProxy == -1 || profileProxy > games)
+            assertTrue(c.getJSONObject("dns").toString().contains("domain:example.ru"))
+            save("$name-lists", c.toString())
+        }
+        // без профиля: свои адреса работают, категории (нужны geo-файлы) пропускаются
+        val off = JSONObject(XrayConfig.build(server, null, user = user, geo = false))
+        val text = off.getJSONObject("routing").toString()
+        assertTrue(text.contains("domain:example.ru") && text.contains("203.0.113.0/24") && !text.contains("ext:"))
+        assertEquals("IPIfNonMatch", off.getJSONObject("routing").getString("domainStrategy"))
+        val offGeo = JSONObject(XrayConfig.build(server, null, user = Lists.User(ready = setOf("ru-all")), geo = true))
+        assertTrue(offGeo.toString().contains("ext:roscom-geoip.dat:direct") && offGeo.toString().contains("domain:xn--p1ai"))
+        save("off-lists", offGeo.toString())
+    }
 }

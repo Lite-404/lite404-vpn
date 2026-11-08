@@ -70,6 +70,10 @@
   .radio { width:20px; height:20px; border-radius:50%; border:2px solid var(--muted); flex:none; position:relative; }
   .radio.on { border-color:var(--accent); } .radio.on::after { content:""; position:absolute; inset:3px; border-radius:50%; background:var(--accent); }
   .radio.off { opacity:.4; }
+  .check { width:20px; height:20px; border-radius:5px; border:2px solid var(--muted); flex:none; position:relative; }
+  .check.on { border-color:var(--accent); background:var(--accent); }
+  .check.on::after { content:""; position:absolute; left:5px; top:1px; width:5px; height:10px; border:solid #111; border-width:0 2px 2px 0; transform:rotate(45deg); }
+  .check.off { opacity:.4; }
 
   textarea { width:100%; background:#0f0f11; color:var(--text); border:1px solid var(--line); border-radius:12px; padding:12px;
              font:13px ui-monospace,Consolas,monospace; height:96px; resize:vertical; }
@@ -200,6 +204,26 @@
         <div class="muted xs" data-t="Изменения применятся при следующем подключении."></div>
       </div>
 
+      <div class="section-title" data-t="Свои списки"></div>
+      <div class="section">
+        <div class="muted xs" data-t="Действуют для основного VPN в любом режиме маршрутизации. Изменения применятся при следующем подключении."></div>
+        <div style="height:8px"></div>
+        <div data-t="Готовые списки — напрямую"></div>
+        <div class="muted xs" id="readyHint" style="color:#ffc233"></div>
+        <div id="readyLists"></div>
+        <div style="height:10px"></div>
+        <div data-t="Свои сайты напрямую"></div>
+        <textarea id="listDirect" rows="4" placeholder="example.ru&#10;203.0.113.0/24" spellcheck="false"></textarea>
+        <div class="muted xs" id="listDirectCount"></div>
+        <div style="height:10px"></div>
+        <div data-t="Свои сайты через VPN"></div>
+        <textarea id="listProxy" rows="3" placeholder="example.com" spellcheck="false"></textarea>
+        <div class="muted xs" id="listProxyCount"></div>
+        <div class="muted xs" data-t="Эти сайты всегда идут через VPN, даже если они есть в списках «напрямую»."></div>
+        <div style="height:6px"></div>
+        <div class="muted xs" data-t="По одному в строке: сайт (example.ru — вместе с поддоменами), IP-адрес или подсеть (10.0.0.0/8)."></div>
+      </div>
+
       <div class="section-title" data-t="Пинг и проверка соединения"></div>
       <div class="section">
         <div class="switch" data-switch="pingOnOpen"><span class="grow" data-t="Пинговать серверы при открытии"></span><span class="toggle"></span></div>
@@ -230,7 +254,7 @@
         <div id="about"></div>
         <button class="textbtn" id="updBtn" data-t="Проверить обновления"></button>
         <div class="muted xs" id="updState"></div>
-        <div class="muted small" style="margin-top:4px" data-t="Основано на WDTT (amurcanov/proxy-turn-vk-android) и Xray-core."></div>
+        <div class="muted small" style="margin-top:4px" data-t="Основано на WDTT (amurcanov/proxy-turn-vk-android) и sing-box-extended."></div>
         <a class="textbtn" href="https://github.com/Lite-404/lite404-vpn" target="_blank" data-t="Исходный код"></a>
         <a class="textbtn" href="https://t.me/lite404bot" target="_blank" data-t="Бот @lite404bot"></a>
       </div>
@@ -292,6 +316,45 @@ function dialog(title, body, acts) {
   $('dialog').classList.remove('hidden');
 }
 $('dialog').onclick = e => { if (e.target.id === 'dialog') $('dialog').classList.add('hidden'); };
+
+// ── свои списки ──
+function countList(text) {
+  let d = 0, i = 0;
+  for (const line of (text || '').split('\n')) for (let v of line.split('#')[0].split(/[\s,;]+/)) {
+    v = v.trim(); if (!v) continue;
+    if (/^\d{1,3}(\.\d{1,3}){3}(\/\d+)?$/.test(v) || /^geoip:/.test(v) || (v.includes(':') && /^[0-9a-f:.\/]+$/i.test(v))) i++; else if (v.includes('.') || /^(geosite|domain|full|keyword):/.test(v)) d++;
+  }
+  return (d || i) ? tr('Сайтов: %s, адресов: %s', d, i) : '';
+}
+let listsTimer;
+function saveLists() {
+  clearTimeout(listsTimer);
+  listsTimer = setTimeout(() => api('settings', { lists: { ready: (S.lists && S.lists.ready) || [], direct: $('listDirect').value, proxy: $('listProxy').value } }), 600);
+}
+function renderLists(s) {
+  const l = s.lists || {}, ready = l.ready || [], on = !!s.smartReady;
+  $('readyHint').textContent = on ? '' : tr('Не настроено на сервере');
+  const box = $('readyLists'), key = JSON.stringify([ready, on, lang]);
+  if (box.dataset.v !== key) {
+    box.innerHTML = '';
+    for (const r of s.readyLists || []) {
+      const sel = ready.includes(r.ID), row = document.createElement('div');
+      row.className = 'opt' + (on ? '' : ' dis');
+      row.innerHTML = '<span class="check' + (sel ? ' on' : '') + (on ? '' : ' off') + '"></span><div><div class="t"></div><div class="muted xs"></div></div>';
+      row.querySelector('.t').textContent = tr(r.Title);
+      row.querySelector('.muted').textContent = tr(r.Hint);
+      if (on) row.onclick = () => api('settings', { lists: { ready: sel ? ready.filter(x => x !== r.ID) : ready.concat(r.ID), direct: $('listDirect').value, proxy: $('listProxy').value } });
+      box.appendChild(row);
+    }
+    box.dataset.v = key;
+  }
+  for (const [id, v] of [['listDirect', l.direct], ['listProxy', l.proxy]]) {
+    const t = $(id);
+    if (!t.oninput) t.oninput = () => { $(id + 'Count').textContent = countList(t.value); saveLists(); };
+    if (document.activeElement !== t && t.value !== (v || '')) t.value = v || '';
+    $(id + 'Count').textContent = countList(t.value);
+  }
+}
 
 async function api(path, body) {
   const opts = body === undefined ? {} : { method:'POST', headers:{ 'X-Lite404':'1', 'Content-Type':'application/json' }, body:JSON.stringify(body) };
@@ -432,11 +495,12 @@ function render(s) {
     sw.querySelector('.toggle').classList.toggle('on', !!s[k]);
     sw.onclick = () => api('settings', { [k]: !s[k] });
   });
+  renderLists(s);
   $('pingUrlName').textContent = (s.pingUrl || '').replace('https://', '').split('/')[0];
   $('proxyHint').textContent = tr(s.proxyHint);
   $('httpAddr').textContent = s.http; $('socksAddr').textContent = s.socks;
   $('proxyError').textContent = s.proxyError ? tr(s.proxyError) : '';
-  fillInfo($('about'), [[tr('Версия'), s.version], [tr('Ядро'), 'Xray ' + s.xrayVersion], [tr('Лицензия'), 'GPLv3']]);
+  fillInfo($('about'), [[tr('Версия'), s.version], [tr('Ядро'), s.xrayVersion], [tr('Лицензия'), 'GPLv3']]);
   renderUpdate(s);
 }
 
@@ -467,11 +531,7 @@ $('updBtn').onclick = async () => {
   if (!r.available) return toast(tr('У вас последняя версия'), 'Success');
   const u = r.update, box = document.createElement('div');
   box.style.whiteSpace = 'pre-line';
-  box.textContent = (u.notes ? u.notes + '
-
-' : '') + tr('Размер: %s МБ', (u.size / 1048576).toFixed(1)) + '
-
-' +
+  box.textContent = (u.notes ? u.notes + '\n\n' : '') + tr('Размер: %s МБ', (u.size / 1048576).toFixed(1)) + '\n\n' +
     tr('Программа перезапустится с новой версией. VPN отключится — после обновления включите его снова.');
   dialog(tr('Доступна версия %s', u.version), box, [[tr('Позже')], [tr('Обновить'), async () => { const s = await api('update/apply', {}); if (s.message) toast(s.message, 'Error'); }]]);
 };

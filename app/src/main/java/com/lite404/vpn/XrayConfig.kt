@@ -11,8 +11,12 @@ object XrayConfig {
      * [profile] — профиль умной маршрутизации (null — всё через VPN). Его geo-файлы
      * должны быть уже скачаны ([Routing.ensureGeo]), иначе передавайте null.
      * [lanDirect] — локальная сеть мимо VPN (TUN её и не получает, см. [Lan]).
+     * [user] — свои списки (см. [Lists]); [geo] — geo-файлы профиля скачаны (нужны готовым спискам).
      */
-    fun build(serverJson: String, profile: JSONObject? = null, lanDirect: Boolean = true): String {
+    fun build(
+        serverJson: String, profile: JSONObject? = null, lanDirect: Boolean = true,
+        user: Lists.User = Lists.User(), geo: Boolean = profile != null,
+    ): String {
         val root = JSONObject(serverJson)
         root.remove("remarks")
         // журнал каждого соединения (access) на телефоне только тратит процессор и батарею
@@ -40,9 +44,16 @@ object XrayConfig {
         if (lanDirect) rules.put(JSONObject().put("type", "field").put("ip", JSONArray(Lan.PRIVATE_CIDRS)).put("outboundTag", "direct"))
         // IPv6 серверы не умеют: отказываем сразу, иначе каждое соединение ждёт неудачной попытки по IPv6
         rules.put(JSONObject("""{"type":"field","ip":["::/0"],"outboundTag":"ipv6-block"}"""))
+        val profileRules = profile?.let { Routing.rules(it, proxyTag) } ?: emptyList()
+        // блокировка рекламы и торрентов из профиля — первой, затем свои списки, затем остальной профиль
+        profileRules.filter { it.optString("outboundTag") == "block" }.forEach { rules.put(it) }
+        val userRules = Lists.rules(user, proxyTag, geo)
+        userRules.forEach { rules.put(it) }
+        profileRules.filter { it.optString("outboundTag") != "block" }.forEach { rules.put(it) }
         if (profile != null) {
-            Routing.rules(profile, proxyTag).forEach { rules.put(it) }
             routing.put("domainStrategy", profile.optString("DomainStrategy").ifBlank { "IPIfNonMatch" })
+        } else if (userRules.any { it.has("ip") }) {
+            routing.put("domainStrategy", "IPIfNonMatch")   // чтобы сайты по имени тоже проверялись по своим IP-спискам
         }
         for (i in 0 until old.length()) {
             val r = stripGeo(old.getJSONObject(i)) ?: continue
@@ -50,7 +61,7 @@ object XrayConfig {
         }
         routing.put("rules", rules)
         if (profile != null) {
-            root.put("dns", Routing.dns(profile))
+            root.put("dns", Routing.dns(profile, Lists.directDomains(user, geo)))
         } else {
             val dns = root.optJSONObject("dns") ?: JSONObject("""{"servers":["1.1.1.1","8.8.8.8"]}""").also { root.put("dns", it) }
             dns.put("queryStrategy", "UseIPv4")   // приложения не получают AAAA → сразу идут по IPv4
@@ -69,7 +80,7 @@ object XrayConfig {
             .put("outbounds", JSONArray().put(proxy)).toString()
     }
 
-    /** geoip.dat и geosite.dat встроены в ядро; правила с внешними файлами (ext:…) убираем — таких файлов нет. */
+    /** Правила подписки с внешними файлами (ext:…) убираем — таких файлов у приложения нет (geoip/geosite без ext: ядро пропускает само, если файла нет). */
     private fun stripGeo(r: JSONObject): JSONObject? {
         var hadMatcher = false
         var left = false

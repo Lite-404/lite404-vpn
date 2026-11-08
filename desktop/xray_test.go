@@ -17,9 +17,9 @@ const testServer = `{"remarks":"🇩🇪 Германия","log":{"loglevel":"wa
  "routing":{"domainStrategy":"AsIs","rules":[{"type":"field","network":"tcp,udp","outboundTag":"proxy"}]}}`
 
 // Профили — настоящие, из панели (общие с тестами Android). Geo-файлы: LITE404_GEO=папка с roscom-*.dat.
-func TestBuildConfigStartsXray(t *testing.T) {
+func TestBuildConfigStartsCore(t *testing.T) {
 	if geo := os.Getenv("LITE404_GEO"); geo != "" {
-		os.Setenv("XRAY_LOCATION_ASSET", geo)
+		geoDirPath = geo
 	}
 	for _, name := range []string{"off", "happ", "incy"} {
 		var profile obj
@@ -30,7 +30,7 @@ func TestBuildConfigStartsXray(t *testing.T) {
 			}
 			json.Unmarshal(data, &profile)
 		}
-		cfg, err := BuildConfig(json.RawMessage(testServer), profile, true)
+		cfg, err := BuildConfig(json.RawMessage(testServer), profile, true, UserLists{}, true)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -52,7 +52,7 @@ func TestBuildConfigStartsXray(t *testing.T) {
 }
 
 func TestLanDirectOff(t *testing.T) {
-	cfg, err := BuildConfig(json.RawMessage(testServer), nil, false)
+	cfg, err := BuildConfig(json.RawMessage(testServer), nil, false, UserLists{}, false)
 	if err != nil || strings.Contains(string(cfg), "192.168.0.0/16") {
 		t.Fatalf("правило локальной сети осталось: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestWireGuardFromWdtt(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, lan := range []bool{true, false} {
-		cfg, err := BuildConfig(server, nil, lan)
+		cfg, err := BuildConfig(server, nil, lan, UserLists{}, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -88,7 +88,40 @@ func TestWireGuardFromWdtt(t *testing.T) {
 		}
 		inst, err := startInstance(cfg)
 		if err != nil {
-			t.Fatalf("Xray не принял WireGuard: %v", err)
+			t.Fatalf("ядро не приняло WireGuard: %v", err)
+		}
+		inst.Close()
+	}
+}
+
+func TestUserLists(t *testing.T) {
+	d, i := parseList("https://Example.ru/path\n# комментарий\n203.0.113.0/24, 198.51.100.7\nпример.рф\nмусор!!\n*.youtube.com")
+	if strings.Join(d, " ") != "domain:example.ru domain:xn--e1afmkfd.xn--p1ai domain:youtube.com" || strings.Join(i, " ") != "203.0.113.0/24 198.51.100.7" {
+		t.Fatalf("parse: %v %v", d, i)
+	}
+	geo := os.Getenv("LITE404_GEO")
+	if geo == "" {
+		t.Skip("LITE404_GEO")
+	}
+	geoDirPath = geo
+	var profile obj
+	data, _ := os.ReadFile("../app/src/test/resources/routing-happ.json")
+	json.Unmarshal(data, &profile)
+	user := UserLists{Ready: []string{"ru-services", "games", "ru-all"}, Direct: "example.ru\n203.0.113.0/24", Proxy: "youtube.com"}
+	for _, p := range []obj{profile, nil} {
+		cfg, err := BuildConfig(json.RawMessage(testServer), p, true, user, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s := string(cfg)
+		s = s[strings.Index(s, `"routing"`):]
+		yt, ex, steam := strings.Index(s, "domain:youtube.com"), strings.Index(s, "domain:example.ru"), strings.Index(s, "roscom-geosite.dat:steam")
+		if yt < 0 || ex < yt || steam < ex {
+			t.Fatalf("порядок правил: %d %d %d", yt, ex, steam)
+		}
+		inst, err := startInstance(cfg)
+		if err != nil {
+			t.Fatalf("ядро: %v", err)
 		}
 		inst.Close()
 	}

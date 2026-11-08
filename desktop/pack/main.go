@@ -44,12 +44,15 @@ const plist = `<?xml version="1.0" encoding="UTF-8"?>
 </dict></plist>
 `
 
+// coreTags — части ядра sing-box-extended (как в core/boxcore/build-aar.sh): WireGuard на gvisor, uTLS/Reality.
+const coreTags = "with_gvisor,with_utls,with_wireguard,badlinkname,tfogo_checklinkname0"
+
 func build(goos, goarch, out, version string) []byte {
-	ldflags := "-s -w -X main.version=" + version
+	ldflags := "-s -w -checklinkname=0 -X main.version=" + version
 	if goos == "windows" {
 		ldflags += " -H windowsgui" // без чёрного окна консоли
 	}
-	cmd := exec.Command("go", "build", "-trimpath", "-ldflags", ldflags, "-o", out, ".")
+	cmd := exec.Command("go", "build", "-trimpath", "-tags", coreTags, "-ldflags", ldflags, "-o", out, ".")
 	cmd.Env = append(os.Environ(), "GOOS="+goos, "GOARCH="+goarch, "CGO_ENABLED=0")
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	if err := cmd.Run(); err != nil {

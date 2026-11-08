@@ -1,25 +1,16 @@
 package main
 
 import (
-	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	gonet "net"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/xtls/xray-core/common/net"
-	"github.com/xtls/xray-core/core"
-	"github.com/xtls/xray-core/features/stats"
-	"github.com/xtls/xray-core/infra/conf/serial"
-	_ "github.com/xtls/xray-core/main/distro/all" // регистрирует все протоколы и транспорты
+	"lite404/boxcore"
 )
 
 const (
@@ -107,11 +98,11 @@ func str(p obj, key, def string) string {
 	return def
 }
 
-func profileDNS(p obj) obj {
+func profileDNS(p obj, extraDirect []any) obj {
 	remote := str(p, "RemoteDNSDomain", str(p, "RemoteDns", "1.1.1.1"))
 	domestic := str(p, "DomesticDNSDomain", str(p, "DomesticDns", "77.88.8.8"))
 	servers := []any{remote}
-	if direct := mapGeo(list(p, "DirectSites"), false); len(direct) > 0 {
+	if direct := append(mapGeo(list(p, "DirectSites"), false), extraDirect...); len(direct) > 0 {
 		local := domestic
 		if strings.HasPrefix(domestic, "https://") {
 			local = "https+local://" + strings.TrimPrefix(domestic, "https://") // мимо маршрутизации, напрямую
@@ -126,20 +117,15 @@ func profileDNS(p obj) obj {
 }
 
 // BuildConfig — конфиг сервера из JSON-подписки → локальный прокси SOCKS/HTTP с маршрутизацией.
-// profile == nil — всё через VPN. lanDirect — локальная сеть мимо VPN.
-func BuildConfig(server json.RawMessage, profile obj, lanDirect bool) ([]byte, error) {
+// profile == nil — всё через VPN. lanDirect — локальная сеть мимо VPN. user — свои списки,
+// geo — geo-файлы профиля скачаны (нужны готовым спискам).
+func BuildConfig(server json.RawMessage, profile obj, lanDirect bool, user UserLists, geo bool) ([]byte, error) {
 	var root obj
 	if err := json.Unmarshal(server, &root); err != nil {
 		return nil, errors.New("непонятный конфиг сервера")
 	}
 	delete(root, "remarks")
 	root["log"] = obj{"loglevel": "warning", "access": "none"}
-	if os.Getenv("LITE404_DEBUG") != "" { // подробный журнал Xray для диагностики
-		root["log"] = obj{"loglevel": "debug", "error": filepath.Join(dataDir(), "xray.log")}
-	}
-	// счётчики входов — для скорости на вкладке «Резерв»
-	root["stats"] = obj{}
-	root["policy"] = obj{"system": obj{"statsInboundUplink": true, "statsInboundDownlink": true}}
 	sniff := obj{"enabled": true, "destOverride": []any{"http", "tls", "quic"}, "routeOnly": false}
 	root["inbounds"] = []any{
 		obj{"tag": "socks", "listen": "127.0.0.1", "port": socksPort, "protocol": "socks", "settings": obj{"udp": true}, "sniffing": sniff},
@@ -177,9 +163,31 @@ func BuildConfig(server json.RawMessage, profile obj, lanDirect bool) ([]byte, e
 		rules = append(rules, obj{"type": "field", "ip": privateCIDRs, "outboundTag": "direct"})
 	}
 	rules = append(rules, obj{"type": "field", "ip": []any{"::/0"}, "outboundTag": "ipv6-block"}) // у серверов нет IPv6
+	var pr []any
 	if profile != nil {
-		rules = append(rules, profileRules(profile, proxyTag)...)
+		pr = profileRules(profile, proxyTag)
+	}
+	// блокировка рекламы и торрентов из профиля — первой, затем свои списки, затем остальной профиль
+	for _, r := range pr {
+		if r.(obj)["outboundTag"] == "block" {
+			rules = append(rules, r)
+		}
+	}
+	ur := userRules(user, proxyTag, geo)
+	rules = append(rules, ur...)
+	for _, r := range pr {
+		if r.(obj)["outboundTag"] != "block" {
+			rules = append(rules, r)
+		}
+	}
+	if profile != nil {
 		routing["domainStrategy"] = str(profile, "DomainStrategy", "IPIfNonMatch")
+	} else {
+		for _, r := range ur {
+			if _, ok := r.(obj)["ip"]; ok { // сайты по имени тоже проверяются по своим IP-спискам
+				routing["domainStrategy"] = "IPIfNonMatch"
+			}
+		}
 	}
 	for _, r := range old { // правила самой подписки (обычно «всё в proxy»); внешние geo-файлы не поддерживаем
 		m, ok := r.(map[string]any)
@@ -191,7 +199,7 @@ func BuildConfig(server json.RawMessage, profile obj, lanDirect bool) ([]byte, e
 	routing["rules"] = rules
 	root["routing"] = routing
 	if profile != nil {
-		root["dns"] = profileDNS(profile)
+		root["dns"] = profileDNS(profile, userDirectDomains(user, geo))
 	} else {
 		dns, _ := root["dns"].(map[string]any)
 		if dns == nil {
@@ -203,92 +211,43 @@ func BuildConfig(server json.RawMessage, profile obj, lanDirect bool) ([]byte, e
 	return json.Marshal(root)
 }
 
-func startInstance(config []byte) (*core.Instance, error) {
-	pb, err := serial.LoadJSONConfig(bytes.NewReader(config))
+// geoDirPath — каталог geo-файлов профиля маршрутизации (задаёт main).
+var geoDirPath = "geo"
+
+// startInstance — конфиг в формате Xray → sing-box → запуск ядра.
+func startInstance(config []byte) (*boxcore.Instance, error) {
+	o := boxcore.Options{GeoDir: geoDirPath}
+	if os.Getenv("LITE404_DEBUG") != "" { // подробный журнал ядра для диагностики
+		o.LogLevel, o.LogFile = "debug", filepath.Join(dataDir(), "core.log")
+	}
+	conv, err := boxcore.Convert(config, o)
 	if err != nil {
-		return nil, fmt.Errorf("Xray не принял конфиг: %v", err)
+		return nil, fmt.Errorf("конфиг сервера: %v", err)
 	}
-	inst, err := core.New(pb)
-	if err != nil {
-		return nil, fmt.Errorf("Xray: %v", err)
-	}
-	if err := inst.Start(); err != nil {
-		inst.Close()
-		return nil, fmt.Errorf("Xray не запустился: %v", err)
-	}
-	return inst, nil
+	return boxcore.Start(conv, nil)
 }
 
-// measure — полный HTTP-запрос через инстанс Xray (как measureDelay в мобильном ядре), мс.
-func measure(inst *core.Instance, url string) (int64, error) {
-	client := &http.Client{
-		Timeout: 12 * time.Second,
-		Transport: &http.Transport{
-			DisableKeepAlives: true,
-			DialContext: func(ctx context.Context, network, addr string) (gonet.Conn, error) {
-				dest, err := net.ParseDestination(network + ":" + addr)
-				if err != nil {
-					return nil, err
-				}
-				return core.Dial(ctx, inst, dest)
-			},
-		},
-	}
-	start := time.Now()
-	resp, err := client.Get(url)
-	if err != nil {
-		return -1, err
-	}
-	io.Copy(io.Discard, resp.Body)
-	resp.Body.Close()
-	if resp.StatusCode != 204 && resp.StatusCode != 200 {
-		return -1, fmt.Errorf("HTTP %d", resp.StatusCode)
-	}
-	return time.Since(start).Milliseconds(), nil
+// measure — полный HTTP-запрос через запущенное ядро, мс.
+func measure(inst *boxcore.Instance, url string) (int64, error) {
+	return inst.URLTest("", url, 12*time.Second)
 }
 
-// Ping — задержка до сервера без подключения: временный инстанс только с исходящим соединением.
+// Ping — задержка до сервера без подключения: временное ядро только с выходом к серверу.
 func Ping(server json.RawMessage, url string) int64 {
-	var root obj
-	if json.Unmarshal(server, &root) != nil {
-		return -1
-	}
-	outs, _ := root["outbounds"].([]any)
-	if len(outs) == 0 {
-		return -1
-	}
-	cfg, _ := json.Marshal(obj{"log": obj{"loglevel": "none"}, "outbounds": []any{outs[0]}})
-	inst, err := startInstance(cfg)
-	if err != nil {
-		return -1
-	}
-	defer inst.Close()
-	ms, err := measure(inst, url)
+	ms, err := boxcore.Ping(server, url, 12*time.Second, nil)
 	if err != nil {
 		return -1
 	}
 	return ms
 }
 
-// Traffic — байты через локальные входы (отдано, получено) с момента подключения.
-func Traffic(inst *core.Instance) (up, down int64) {
-	m, ok := inst.GetFeature(stats.ManagerType()).(stats.Manager)
-	if !ok {
-		return 0, 0
-	}
-	for _, in := range []string{"socks", "http"} {
-		if c := m.GetCounter("inbound>>>" + in + ">>>traffic>>>uplink"); c != nil {
-			up += c.Value()
-		}
-		if c := m.GetCounter("inbound>>>" + in + ">>>traffic>>>downlink"); c != nil {
-			down += c.Value()
-		}
-	}
-	return
+// Traffic — байты через ядро (отдано, получено) с момента подключения.
+func Traffic(inst *boxcore.Instance) (up, down int64) {
+	return inst.Traffic()
 }
 
 // WireGuardServer — WireGuard-конфиг от клиента WDTT → «сервер» в формате JSON-подписки:
-// один выход WireGuard внутри Xray (пользовательский стек, без драйвера и прав администратора).
+// один выход WireGuard внутри ядра (пользовательский стек, без драйвера и прав администратора).
 func WireGuardServer(conf string) (json.RawMessage, error) {
 	var section string
 	var secret, pub, psk, endpoint string

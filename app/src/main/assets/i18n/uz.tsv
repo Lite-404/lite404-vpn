@@ -52,7 +52,7 @@
 Версия	Versiya
 Ядро	Yadro
 Лицензия	Litsenziya
-Основано на WDTT (amurcanov/proxy-turn-vk-android) и Xray-core.	WDTT (amurcanov/proxy-turn-vk-android) va Xray-core asosida.
+Основано на WDTT (amurcanov/proxy-turn-vk-android) и sing-box-extended.	WDTT (amurcanov/proxy-turn-vk-android) va sing-box-extended asosida.
 Исходный код	Manba kodi
 Бот @lite404bot	Bot @lite404bot
 Выйти из аккаунта?	Hisobdan chiqasizmi?
@@ -115,3 +115,28 @@ VPN включён	VPN yoqilgan
 Не удалось проверить обновления: %s	Yangilanishlarni tekshirib boʻlmadi: %s
 Не удалось скачать обновление: %s	Yangilanishni yuklab boʻlmadi: %s
 Файл обновления повреждён. Попробуйте ещё раз.	Yangilanish fayli buzilgan. Qayta urinib koʻring.
+Российские сервисы	Rossiya xizmatlari
+Госуслуги, банки, магазины, доставка, соцсети, операторы связи	Gosuslugi, banklar, do'konlar, yetkazib berish, ijtimoiy tarmoqlar, aloqa operatorlari
+Все российские сайты	Barcha Rossiya saytlari
+Все сайты в зонах .ru, .рф, .su и все российские IP-адреса	.ru, .рф, .su zonalaridagi barcha saytlar va barcha Rossiya IP-manzillari
+Сайты только для России	Faqat Rossiya uchun saytlar
+Сайты, которые открываются только с российского IP: часть банков, сервисы проверки IP и др.	Faqat Rossiya IP-manzilidan ochiladigan saytlar: ba'zi banklar, IP tekshirish xizmatlari va boshqalar
+Игры	O'yinlar
+Обновления Windows, Office, Xbox	Windows, Office, Xbox yangilanishlari
+iCloud, App Store, обновления	iCloud, App Store, yangilanishlar
+Готовые списки недоступны — правила не скачались или не настроены на сервере	Tayyor ro'yxatlar mavjud emas — qoidalar yuklanmadi yoki serverda sozlanmagan
+Российские приложения (%s) идут мимо VPN. Изменить — во вкладке «Приложения»	Rossiya ilovalari (%s) VPN'siz ishlaydi. O'zgartirish — «Ilovalar» bo'limida
+Новые российские приложения (%s) идут мимо VPN	Yangi Rossiya ilovalari (%s) VPN'siz ishlaydi
+Российских приложений мимо VPN: %s	VPN'siz Rossiya ilovalari: %s
+Российские приложения — мимо VPN	Rossiya ilovalari — VPN'siz
+Яндекс, VK, Госуслуги, маркетплейсы, магазины, доставка, банки, операторы связи — они работают с российским IP	Yandex, VK, Gosuslugi, marketpleyslar, do'konlar, yetkazib berish, banklar, aloqa operatorlari — ular Rossiya IP-manzili bilan ishlaydi
+Свои списки	O'z ro'yxatlarim
+Готовые списки и свои сайты — напрямую или через VPN	Tayyor ro'yxatlar va o'z saytlaringiz — to'g'ridan-to'g'ri yoki VPN orqali
+Выбрано: %s	Tanlandi: %s
+Действуют для основного VPN в любом режиме маршрутизации. Изменения применятся при следующем подключении.	Asosiy VPN uchun istalgan marshrutlash rejimida amal qiladi. O'zgarishlar keyingi ulanishda qo'llaniladi.
+Готовые списки — напрямую	Tayyor ro'yxatlar — to'g'ridan-to'g'ri
+Свои сайты напрямую	O'z saytlarim to'g'ridan-to'g'ri
+Свои сайты через VPN	O'z saytlarim VPN orqali
+Эти сайты всегда идут через VPN, даже если они есть в списках «напрямую».	Bu saytlar «to'g'ridan-to'g'ri» ro'yxatlarida bo'lsa ham, doim VPN orqali o'tadi.
+По одному в строке: сайт (example.ru — вместе с поддоменами), IP-адрес или подсеть (10.0.0.0/8).	Har qatorga bittadan: sayt (example.ru — subdomenlari bilan), IP-manzil yoki tarmoq (10.0.0.0/8).
+Сайтов: %s, адресов: %s	Saytlar: %s, manzillar: %s

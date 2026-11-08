@@ -13,8 +13,8 @@ android {
         applicationId = "com.lite404.vpn"
         minSdk = 28
         targetSdk = 35
-        versionCode = 23
-        versionName = "0.9.2"
+        versionCode = 24
+        versionName = "0.10.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -139,5 +139,5 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
     implementation("com.wireguard.android:tunnel:1.0.20230706")
-    implementation(files("libs/libv2ray.aar"))
+    implementation(files("libs/vpncore.aar"))
 }

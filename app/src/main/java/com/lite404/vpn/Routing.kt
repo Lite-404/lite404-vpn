@@ -63,7 +63,7 @@ object Routing {
     }
 
     /** geosite:X / geoip:X → категории из скачанных файлов профиля; домены и IP — как есть. */
-    private fun mapGeo(values: JSONArray?, ip: Boolean): JSONArray {
+    fun mapGeo(values: JSONArray?, ip: Boolean): JSONArray {
         val out = JSONArray()
         if (values == null) return out
         for (i in 0 until values.length()) {
@@ -99,11 +99,12 @@ object Routing {
     }
 
     /** DNS профиля: «удалённый» DoH через VPN по умолчанию, «домашний» DoH напрямую — для сайтов, что идут напрямую. */
-    fun dns(profile: JSONObject): JSONObject {
+    fun dns(profile: JSONObject, extraDirect: List<String> = emptyList()): JSONObject {
         val remote = profile.optString("RemoteDNSDomain").ifBlank { profile.optString("RemoteDns", "1.1.1.1") }
         val domestic = profile.optString("DomesticDNSDomain").ifBlank { profile.optString("DomesticDns", "77.88.8.8") }
         val servers = JSONArray().put(remote)
         val directDomains = mapGeo(profile.optJSONArray("DirectSites"), ip = false)
+        mapGeo(JSONArray(extraDirect), ip = false).let { for (i in 0 until it.length()) directDomains.put(it.get(i)) }
         if (directDomains.length() > 0) {
             // https+local:// — запрос идёт мимо маршрутизации, напрямую (как и сами сайты)
             val local = if (domestic.startsWith("https://")) domestic.replaceFirst("https://", "https+local://") else domestic

@@ -5,45 +5,38 @@ import android.content.Intent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import libv2ray.Libv2ray
+import com.lite404.vpncore.Vpncore
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.util.UUID
 
 /**
- * Общее для ядра Xray: geo-файлы и пинг.
+ * Общее для ядра (sing-box-extended, библиотека vpncore): geo-файлы и пинг. Конфиги серверов приходят
+ * в формате Xray (JSON-подписка 3x-ui); в формат sing-box их переводит само ядро (Vpncore.convert).
  *
- * ВАЖНО: функции, которые вызывают Libv2ray (initEnv), можно использовать только в процессах «:xray» и «:ping».
+ * ВАЖНО: функции, которые вызывают Vpncore (initEnv), можно использовать только в процессах «:xray» и «:ping».
  * В основном процессе работает WireGuard (тоже Go) — вторая среда Go в том же процессе роняет приложение.
  */
 object XrayCore {
     const val VERSION_FILE = "xray_version"
     @Volatile private var envReady = false
 
-    /** geoip.dat / geosite.dat из ядра → в папку приложения (Xray читает их оттуда для правил маршрутизации). */
-    fun geoDir(ctx: Context): File {
-        val dir = File(ctx.filesDir, "geo").apply { mkdirs() }
-        val ver = File(dir, ".version")
-        val want = BuildConfig.VERSION_CODE.toString()
-        if (runCatching { ver.readText() }.getOrNull() != want) {
-            for (n in listOf("geoip.dat", "geosite.dat")) {
-                ctx.assets.open(n).use { inp -> File(dir, n).outputStream().use { inp.copyTo(it) } }
-            }
-            ver.writeText(want)
-        }
-        return dir
-    }
+    /**
+     * Папка geo-файлов профиля маршрутизации (roscom-geoip.dat / roscom-geosite.dat качает [Routing.ensureGeo]).
+     * Стандартные geoip.dat/geosite.dat больше не нужны: geoip:private ядро понимает само.
+     */
+    fun geoDir(ctx: Context): File = File(ctx.filesDir, "geo").apply { mkdirs() }
 
     /** Только для процессов «:xray» и «:ping». */
     fun initEnv(ctx: Context) {
         if (envReady) return
         synchronized(this) {
             if (!envReady) {
-                Libv2ray.initCoreEnv(geoDir(ctx).absolutePath, "")
+                geoDir(ctx)
                 envReady = true
                 // версию ядра показывает экран настроек (сам он ядро загружать не может)
-                runCatching { File(ctx.filesDir, VERSION_FILE).writeText(Libv2ray.checkVersionX()) }
+                runCatching { File(ctx.filesDir, VERSION_FILE).writeText(Vpncore.version()) }
             }
         }
     }

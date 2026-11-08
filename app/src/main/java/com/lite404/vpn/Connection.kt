@@ -68,11 +68,16 @@ object Connection {
      * [profile] — маршрутизация «как в Happ/INCY» (null — всё через VPN). Её geo-файлы качаются здесь же;
      * не скачались и в кэше пусто — подключаемся без неё и сообщаем через [notice].
      */
-    fun connectXray(ctx: Context, server: XrayServer, profile: JSONObject?, notice: (String) -> Unit = {}) =
+    fun connectXray(ctx: Context, server: XrayServer, profile: JSONObject?, geoSource: JSONObject? = profile, notice: (String) -> Unit = {}) =
         run(ctx, ConnState(VpnMode.XRAY, Phase.CONNECTING)) { app ->
+        val prefs = Prefs(app)
+        val user = prefs.userLists()
         val usable = profile?.takeIf { Routing.ensureGeo(app, it) }
         if (profile != null && usable == null) notice(tr("Не удалось скачать правила маршрутизации — сейчас всё идёт через VPN"))
-        val config = XrayConfig.build(server.config, usable, Prefs(app).lanDirectXray)
+        // готовым спискам нужны geo-файлы профиля сервера, даже если умная маршрутизация выключена
+        val geo = usable != null || (user.needsGeo() && (profile ?: geoSource)?.let { Routing.ensureGeo(app, it) } == true)
+        if (user.needsGeo() && !geo) notice(tr("Готовые списки недоступны — правила не скачались или не настроены на сервере"))
+        val config = XrayConfig.build(server.config, usable, prefs.lanDirectXray, user, geo)
         if (WdttController.active()) {
             WdttController.stopAndWait(app)
             delay(600)   // система освобождает VPN-интерфейс WireGuard

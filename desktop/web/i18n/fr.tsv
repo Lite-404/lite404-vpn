@@ -52,7 +52,7 @@
 Версия	Version
 Ядро	Noyau
 Лицензия	Licence
-Основано на WDTT (amurcanov/proxy-turn-vk-android) и Xray-core.	Basé sur WDTT (amurcanov/proxy-turn-vk-android) et Xray-core.
+Основано на WDTT (amurcanov/proxy-turn-vk-android) и sing-box-extended.	Basé sur WDTT (amurcanov/proxy-turn-vk-android) et sing-box-extended.
 Исходный код	Code source
 Бот @lite404bot	Bot @lite404bot
 Выйти из аккаунта?	Se déconnecter ?
@@ -115,6 +115,31 @@ VPN включён	VPN activé
 Не удалось проверить обновления: %s	Impossible de rechercher des mises à jour : %s
 Не удалось скачать обновление: %s	Impossible de télécharger la mise à jour : %s
 Файл обновления повреждён. Попробуйте ещё раз.	Le fichier de mise à jour est endommagé. Réessayez.
+Российские сервисы	Services russes
+Госуслуги, банки, магазины, доставка, соцсети, операторы связи	Gosuslugi, banques, boutiques, livraison, réseaux sociaux, opérateurs mobiles
+Все российские сайты	Tous les sites russes
+Все сайты в зонах .ru, .рф, .su и все российские IP-адреса	Tous les sites des zones .ru, .рф, .su et toutes les adresses IP russes
+Сайты только для России	Sites réservés à la Russie
+Сайты, которые открываются только с российского IP: часть банков, сервисы проверки IP и др.	Sites qui ne s’ouvrent qu’avec une IP russe : certaines banques, services de vérification d’IP, etc.
+Игры	Jeux
+Обновления Windows, Office, Xbox	Mises à jour Windows, Office, Xbox
+iCloud, App Store, обновления	iCloud, App Store, mises à jour
+Готовые списки недоступны — правила не скачались или не настроены на сервере	Les listes prêtes sont indisponibles — les règles n’ont pas été téléchargées ou ne sont pas configurées sur le serveur
+Российские приложения (%s) идут мимо VPN. Изменить — во вкладке «Приложения»	Les applis russes (%s) passent hors du VPN. Modifier dans l’onglet « Applications »
+Новые российские приложения (%s) идут мимо VPN	Nouvelles applis russes (%s) hors du VPN
+Российских приложений мимо VPN: %s	Applis russes hors du VPN : %s
+Российские приложения — мимо VPN	Applis russes — hors du VPN
+Яндекс, VK, Госуслуги, маркетплейсы, магазины, доставка, банки, операторы связи — они работают с российским IP	Yandex, VK, Gosuslugi, marketplaces, boutiques, livraison, banques, opérateurs — ils fonctionnent avec une IP russe
+Свои списки	Listes personnelles
+Готовые списки и свои сайты — напрямую или через VPN	Listes prêtes et vos propres sites — en direct ou via le VPN
+Выбрано: %s	Sélectionnés : %s
+Действуют для основного VPN в любом режиме маршрутизации. Изменения применятся при следующем подключении.	S’appliquent au VPN principal dans tout mode de routage. Les modifications prendront effet à la prochaine connexion.
+Готовые списки — напрямую	Listes prêtes — en direct
+Свои сайты напрямую	Mes sites en direct
+Свои сайты через VPN	Mes sites via le VPN
+Эти сайты всегда идут через VPN, даже если они есть в списках «напрямую».	Ces sites passent toujours par le VPN, même s’ils figurent dans les listes « en direct ».
+По одному в строке: сайт (example.ru — вместе с поддоменами), IP-адрес или подсеть (10.0.0.0/8).	Un par ligne : site (example.ru — sous-domaines compris), adresse IP ou sous-réseau (10.0.0.0/8).
+Сайтов: %s, адресов: %s	Sites : %s, adresses : %s
 
 Устанавливаем обновление…	Installation de la mise à jour…
 Перезапуск…	Redémarrage…

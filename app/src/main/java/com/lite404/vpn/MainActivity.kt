@@ -12,6 +12,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Process
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -318,6 +319,15 @@ private fun MainScreen(model: AppModel, tab: Tab) {
     val ctx = LocalContext.current
     val live = remember { LiveState() }
     LaunchedEffect(Unit) { Connection.attach(ctx) }
+    LaunchedEffect(Unit) {
+        // российские приложения — мимо VPN: при первом входе и для новых установленных
+        val first = !model.prefs.autoAppsDone
+        val added = withContext(Dispatchers.IO) { AutoApps.sync(ctx) }
+        if (added > 0) model.notify(
+            if (first) tr("Российские приложения (%s) идут мимо VPN. Изменить — во вкладке «Приложения»", added)
+            else tr("Новые российские приложения (%s) идут мимо VPN", added)
+        )
+    }
     val wdttRunning by TunnelManager.running.collectAsState()
     LaunchedEffect(Unit) {
         val uid = Process.myUid()
@@ -461,7 +471,7 @@ private fun VpnTab(model: AppModel, live: LiveState) {
     fun connect() {
         val s = servers.getOrNull(index) ?: return
         model.askBatteryOnce()
-        Connection.connectXray(ctx, s, Routing.profile(cfg, model.prefs.routingMode)) { model.notify(it, ToastKind.Info) }
+        Connection.connectXray(ctx, s, Routing.profile(cfg, model.prefs.routingMode), Routing.profile(cfg, Routing.MODE_SMART)) { model.notify(it, ToastKind.Info) }
     }
     val askVpn = rememberVpnPermission { connect() }
 
@@ -731,6 +741,23 @@ private fun AppsTab(model: AppModel, live: LiveState) {
                 Text(t, fontSize = 15.sp)
             }
         }
+        val scope = rememberCoroutineScope()
+        var finding by remember { mutableStateOf(false) }
+        OutlinedButton(
+            enabled = !finding,
+            onClick = {
+                finding = true
+                scope.launch {
+                    val found = withContext(Dispatchers.IO) { AutoApps.find(ctx) }
+                    model.prefs.autoAppsSeen = model.prefs.autoAppsSeen + found
+                    if (found.isNotEmpty()) save("exclude", if (mode == "exclude") selected + found else found)
+                    finding = false
+                    model.notify(tr("Российских приложений мимо VPN: %s", found.size))
+                }
+            },
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+        ) { Text(tr("Российские приложения — мимо VPN")) }
+        Text(tr("Яндекс, VK, Госуслуги, маркетплейсы, магазины, доставка, банки, операторы связи — они работают с российским IP"), color = Muted, fontSize = 12.sp)
         if (mode == "include" && selected.isEmpty())
             Text(tr("Выберите хотя бы одно приложение — пока все идут через VPN"), color = Color(0xFFFFC233), fontSize = 13.sp)
         if (changed)
@@ -805,7 +832,9 @@ private fun SettingsTab(model: AppModel) {
             runCatching { java.io.File(ctx.filesDir, XrayCore.VERSION_FILE).readText().trim() }.getOrNull()?.ifBlank { null } ?: "—"
         }
     }
+    var showLists by remember { mutableStateOf(false) }
     if (showLogs) { LogsScreen { showLogs = false }; return }
+    if (showLists) { ListsScreen(model) { showLists = false }; return }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
         Header(tr("Настройки"))
@@ -852,6 +881,18 @@ private fun SettingsTab(model: AppModel) {
                         Text(hint, color = Muted, fontSize = 12.sp)
                     }
                 }
+            }
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { showLists = true }.padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(tr("Свои списки"), fontSize = 15.sp)
+                    val u = model.prefs.userLists()
+                    val n = u.ready.size + Lists.parse(u.direct).let { it.first.size + it.second.size } + Lists.parse(u.proxy).let { it.first.size + it.second.size }
+                    Text(if (n == 0) tr("Готовые списки и свои сайты — напрямую или через VPN") else tr("Выбрано: %s", n), color = Muted, fontSize = 12.sp)
+                }
+                Icon(Icons.AutoMirrored.Filled.List, null, tint = Accent)
             }
             Spacer(Modifier.height(6.dp))
             SwitchLine(tr("Локальная сеть напрямую"), lan) { lan = it; model.prefs.lanDirectXray = it }
@@ -928,9 +969,9 @@ private fun SettingsTab(model: AppModel) {
         Section(tr("О приложении")) {
             InfoLine(tr("Версия"), BuildConfig.VERSION_NAME)
             UpdateBlock(model)
-            InfoLine(tr("Ядро"), "Xray $xrayVersion")
+            InfoLine(tr("Ядро"), xrayVersion)
             InfoLine(tr("Лицензия"), "GPLv3")
-            Text(tr("Основано на WDTT (amurcanov/proxy-turn-vk-android) и Xray-core."), color = Muted, fontSize = 13.sp)
+            Text(tr("Основано на WDTT (amurcanov/proxy-turn-vk-android) и sing-box-extended."), color = Muted, fontSize = 13.sp)
             TextButton(onClick = { openUrl(ctx, SOURCE_URL) }) { Text(tr("Исходный код")) }
             TextButton(onClick = { openUrl(ctx, BOT_URL) }) { Text(tr("Бот @lite404bot")) }
         }
@@ -1051,6 +1092,63 @@ private fun Section(title: String, content: @Composable ColumnScope.() -> Unit) 
     Text(title, color = Accent, fontSize = 13.sp, modifier = Modifier.padding(start = 4.dp, bottom = 6.dp))
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Card).padding(16.dp), content = content)
     Spacer(Modifier.height(16.dp))
+}
+
+@Composable
+private fun ListsScreen(model: AppModel, onBack: () -> Unit) {
+    BackHandler(onBack = onBack)
+    var ready by remember { mutableStateOf(model.prefs.readyLists) }
+    var direct by remember { mutableStateOf(model.prefs.customDirect) }
+    var proxy by remember { mutableStateOf(model.prefs.customProxy) }
+    val geoReady = Routing.profile(model.config, Routing.MODE_SMART) != null
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) }
+            Text(tr("Свои списки"), fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+        }
+        Text(tr("Действуют для основного VPN в любом режиме маршрутизации. Изменения применятся при следующем подключении."), color = Muted, fontSize = 12.sp)
+        Section(tr("Готовые списки — напрямую")) {
+            if (!geoReady) Text(tr("Не настроено на сервере"), color = Color(0xFFFFC233), fontSize = 13.sp)
+            Lists.READY.forEach { l ->
+                val on = l.id in ready
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable(enabled = geoReady) {
+                        ready = if (on) ready - l.id else ready + l.id; model.prefs.readyLists = ready
+                    }.padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(checked = on, onCheckedChange = null, enabled = geoReady)
+                    Spacer(Modifier.width(8.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(tr(l.title), fontSize = 15.sp, color = if (geoReady) Color.Unspecified else Muted)
+                        Text(tr(l.hint), color = Muted, fontSize = 12.sp)
+                    }
+                }
+            }
+        }
+        Section(tr("Свои сайты напрямую")) {
+            OutlinedTextField(
+                value = direct, onValueChange = { direct = it; model.prefs.customDirect = it },
+                modifier = Modifier.fillMaxWidth().heightIn(min = 110.dp), placeholder = { Text("example.ru\n203.0.113.0/24") }
+            )
+            ListCount(direct)
+        }
+        Section(tr("Свои сайты через VPN")) {
+            OutlinedTextField(
+                value = proxy, onValueChange = { proxy = it; model.prefs.customProxy = it },
+                modifier = Modifier.fillMaxWidth().heightIn(min = 110.dp), placeholder = { Text("example.com") }
+            )
+            ListCount(proxy)
+            Text(tr("Эти сайты всегда идут через VPN, даже если они есть в списках «напрямую»."), color = Muted, fontSize = 12.sp)
+        }
+        Text(tr("По одному в строке: сайт (example.ru — вместе с поддоменами), IP-адрес или подсеть (10.0.0.0/8)."), color = Muted, fontSize = 12.sp)
+    }
+}
+
+@Composable
+private fun ListCount(text: String) {
+    val (d, i) = Lists.parse(text)
+    if (text.isNotBlank()) Text(tr("Сайтов: %s, адресов: %s", d.size, i.size), color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
 }
 
 @Composable

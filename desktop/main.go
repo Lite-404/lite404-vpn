@@ -1,5 +1,5 @@
 // Lite404 VPN для компьютера — то же, что Android-приложение, с интерфейсом под ПК:
-// основной VPN (Xray) и резервный VPN (WDTT через звонки VK). Трафик идёт через локальный прокси
+// основной VPN (ядро sing-box-extended, конфиги в формате Xray) и резервный VPN (WDTT через звонки VK). Трафик идёт через локальный прокси
 // (SOCKS 10808 / HTTP 10809) и системный прокси; интерфейс — страница на 127.0.0.1:47404 в браузере.
 // Данные — по тому же токену, что и на телефоне.
 package main
@@ -20,7 +20,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/xtls/xray-core/core"
+	"lite404/boxcore"
 )
 
 var version = "dev"
@@ -42,7 +42,7 @@ type App struct {
 	mu       sync.Mutex
 	s        *Settings
 	cfg      *AppConfig
-	inst     *core.Instance
+	inst     *boxcore.Instance
 	instConf string // WireGuard-конфиг, на котором поднят Xray в режиме «Резерв»
 	mode     string // "" | xray | wdtt
 	phase    string // off | connecting | on | stopping
@@ -76,7 +76,15 @@ func (a *App) loadCached() {
 
 // profile — профиль умной маршрутизации (из панели); nil — всё через VPN.
 func (a *App) profile() obj {
-	if a.cfg == nil || a.s.Routing == "off" {
+	if a.s.Routing == "off" {
+		return nil
+	}
+	return a.serverProfile()
+}
+
+// serverProfile — профиль с сервера независимо от режима (из него берутся geo-файлы для готовых списков).
+func (a *App) serverProfile() obj {
+	if a.cfg == nil {
 		return nil
 	}
 	for _, name := range []string{"happ", "incy"} {
@@ -167,7 +175,7 @@ func (a *App) connectXray(i int) error {
 		return errors.New(msg)
 	}
 	a.stopAllLocked()
-	server, profile := a.cfg.Xray[i], a.profile()
+	server, profile, geoSrc, user := a.cfg.Xray[i], a.profile(), a.serverProfile(), a.s.Lists
 	a.mode, a.phase, a.conn, a.errText = "xray", "connecting", i, ""
 	a.s.Server = i
 	a.s.save()
@@ -180,7 +188,14 @@ func (a *App) connectXray(i int) error {
 			notice = "Не удалось скачать правила маршрутизации — сейчас всё идёт через VPN"
 		}
 	}
-	cfg, err := BuildConfig(server, profile, *a.s.LanDirect)
+	geo := profile != nil
+	if !geo && user.needsGeo() && geoSrc != nil { // готовым спискам нужны geo-файлы и при «Всё через VPN»
+		geo = ensureGeo(geoSrc) == nil
+	}
+	if user.needsGeo() && !geo && notice == "" {
+		notice = "Готовые списки недоступны — правила не скачались или не настроены на сервере"
+	}
+	cfg, err := BuildConfig(server, profile, *a.s.LanDirect, user, geo)
 	a.mu.Lock()
 	if a.mode != "xray" || a.conn != i { // пока готовились, нажали «Стоп» или выбрали другое
 		a.mu.Unlock()
@@ -251,7 +266,7 @@ func (a *App) onWdttConfig(conf string) {
 	server, err := WireGuardServer(conf)
 	var cfg []byte
 	if err == nil {
-		cfg, err = BuildConfig(server, nil, a.s.LanWdtt)
+		cfg, err = BuildConfig(server, nil, a.s.LanWdtt, UserLists{}, false)
 	}
 	if err == nil {
 		err = a.startProxyLocked(cfg, a.s.LanWdtt)
@@ -374,13 +389,14 @@ func (a *App) state() obj {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	st := obj{
-		"version": version, "xrayVersion": core.Version(), "os": osName(),
+		"version": version, "xrayVersion": "sing-box " + boxcore.Version(), "os": osName(),
 		"hasToken": a.s.Token != "", "loading": a.loading,
 		"mode": a.mode, "phase": a.phase, "error": a.errText, "notice": a.notice, "test": a.test, "conn": a.conn,
 		"server": a.s.Server, "wdttServer": a.s.WdttServer,
 		"routing": a.s.Routing, "lanDirect": *a.s.LanDirect, "lanWdtt": a.s.LanWdtt,
 		"systemProxy": a.s.SystemProxy, "pingUrl": a.s.PingURL, "pingUrls": pingURLs,
 		"pingOnOpen": a.s.PingOnOpen, "testAfter": a.s.TestAfter, "lang": a.s.Lang,
+		"lists": a.s.Lists, "readyLists": readyLists,
 		"pinging": a.pinging, "pings": a.pings, "proxyHint": proxyHint, "proxyError": a.proxyErr,
 		"socks": fmt.Sprintf("127.0.0.1:%d", socksPort), "http": fmt.Sprintf("127.0.0.1:%d", httpPort),
 		"wdttActive": w.Active, "wdttStats": w.Stats, "speedUp": a.speedUp, "speedDown": a.speedDn,
@@ -528,6 +544,21 @@ func (a *App) handler() http.Handler {
 		if v, ok := m["lanWdtt"].(bool); ok {
 			a.s.LanWdtt = v
 		}
+		if v, ok := m["lists"].(map[string]any); ok {
+			l := UserLists{}
+			if r, ok := v["ready"].([]any); ok {
+				for _, id := range r {
+					if s, ok := id.(string); ok {
+						l.Ready = append(l.Ready, s)
+					}
+				}
+			}
+			l.Direct, _ = v["direct"].(string)
+			l.Proxy, _ = v["proxy"].(string)
+			if len(l.Direct) <= 200_000 && len(l.Proxy) <= 200_000 {
+				a.s.Lists = l
+			}
+		}
 		if v, ok := m["routing"].(string); ok && (v == "smart" || v == "off") {
 			a.s.Routing = v
 		}
@@ -621,7 +652,7 @@ func main() {
 		log.SetOutput(f)
 		os.Stderr = f
 	}
-	os.Setenv("XRAY_LOCATION_ASSET", filepath.Join(dir, "geo"))
+	geoDirPath = filepath.Join(dir, "geo")
 
 	ln, err := net.Listen("tcp", uiAddr)
 	for i := 0; err != nil && afterUpdate && i < 60; i++ { // старая версия ещё выходит

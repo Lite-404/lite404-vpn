@@ -1,5 +1,5 @@
-# ядро Xray (gomobile)
--keep class libv2ray.** { *; }
+# ядро sing-box-extended (gomobile, core/boxcore)
+-keep class com.lite404.vpncore.** { *; }
 -keep class go.** { *; }
 # WireGuard (движок WDTT)
 -keep class com.wireguard.** { *; }
