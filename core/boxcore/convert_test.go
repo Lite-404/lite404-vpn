@@ -154,10 +154,15 @@ func TestAndroidConfig(t *testing.T) {
 		t.Fatalf("tun: %v", tun)
 	}
 	rules := m["route"].(map[string]any)["rules"].([]any)
-	r := func(i int) map[string]any { return rules[i].(map[string]any) }
-	if r(0)["action"] != "sniff" {
-		t.Fatalf("первое правило: %v", r(0))
+	// routeOnly=false: TCP — sniff с подстановкой домена, UDP — только sniff
+	if s := rules[0].(map[string]any); s["action"] != "sniff" || s["override_destination"] != true || s["network"] != "tcp" {
+		t.Fatalf("первое правило: %v", s)
 	}
+	if s := rules[1].(map[string]any); s["action"] != "sniff" || s["override_destination"] != nil || s["network"] != "udp" {
+		t.Fatalf("второе правило: %v", s)
+	}
+	rules = rules[1:]
+	r := func(i int) map[string]any { return rules[i].(map[string]any) }
 	if r(1)["action"] != "hijack-dns" || r(1)["port"].([]any)[0] != 53.0 || r(1)["inbound"].([]any)[0] != "tun" {
 		t.Fatalf("DNS: %v", r(1))
 	}

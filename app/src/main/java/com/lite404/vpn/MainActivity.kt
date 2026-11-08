@@ -320,13 +320,8 @@ private fun MainScreen(model: AppModel, tab: Tab) {
     val live = remember { LiveState() }
     LaunchedEffect(Unit) { Connection.attach(ctx) }
     LaunchedEffect(Unit) {
-        // российские приложения — мимо VPN: при первом входе и для новых установленных
-        val first = !model.prefs.autoAppsDone
-        val added = withContext(Dispatchers.IO) { AutoApps.sync(ctx) }
-        if (added > 0) model.notify(
-            if (first) tr("Российские приложения (%s) идут мимо VPN. Изменить — во вкладке «Приложения»", added)
-            else tr("Новые российские приложения (%s) идут мимо VPN", added)
-        )
+        // российские приложения — мимо VPN: тихо отмечаются при первом входе и новые установленные
+        withContext(Dispatchers.IO) { AutoApps.sync(ctx) }
     }
     val wdttRunning by TunnelManager.running.collectAsState()
     LaunchedEffect(Unit) {
@@ -741,23 +736,6 @@ private fun AppsTab(model: AppModel, live: LiveState) {
                 Text(t, fontSize = 15.sp)
             }
         }
-        val scope = rememberCoroutineScope()
-        var finding by remember { mutableStateOf(false) }
-        OutlinedButton(
-            enabled = !finding,
-            onClick = {
-                finding = true
-                scope.launch {
-                    val found = withContext(Dispatchers.IO) { AutoApps.find(ctx) }
-                    model.prefs.autoAppsSeen = model.prefs.autoAppsSeen + found
-                    if (found.isNotEmpty()) save("exclude", if (mode == "exclude") selected + found else found)
-                    finding = false
-                    model.notify(tr("Российских приложений мимо VPN: %s", found.size))
-                }
-            },
-            modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
-        ) { Text(tr("Российские приложения — мимо VPN")) }
-        Text(tr("Яндекс, VK, Госуслуги, маркетплейсы, магазины, доставка, банки, операторы связи — они работают с российским IP"), color = Muted, fontSize = 12.sp)
         if (mode == "include" && selected.isEmpty())
             Text(tr("Выберите хотя бы одно приложение — пока все идут через VPN"), color = Color(0xFFFFC233), fontSize = 13.sp)
         if (changed)
@@ -914,7 +892,7 @@ private fun SettingsTab(model: AppModel) {
                 Text(tr("Адрес для проверки"), fontSize = 15.sp, modifier = Modifier.weight(1f))
                 Text(url.removePrefix("https://").substringBefore("/"), color = Accent, fontSize = 13.sp)
             }
-            Text(tr("Пинг — время полного запроса через сервер (подключение + ответ сайта), а не ICMP. Поэтому цифры выше, чем у обычного ping."), color = Muted, fontSize = 12.sp)
+            Text(tr("Пинг — время запроса через сервер по уже открытому соединению (как в v2rayNG и NekoBox), а не ICMP."), color = Muted, fontSize = 12.sp)
             if (chooseUrl) AlertDialog(
                 onDismissRequest = { chooseUrl = false },
                 title = { Text(tr("Адрес для проверки")) },

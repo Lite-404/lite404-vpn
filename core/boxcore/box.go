@@ -132,33 +132,51 @@ func (i *Instance) URLTest(tag, link string, timeout time.Duration) (int64, erro
 	if err != nil {
 		return -1, err
 	}
-	client := &http.Client{
-		Timeout: timeout,
-		Transport: &http.Transport{
-			DisableKeepAlives: true,
-			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				return d.DialContext(ctx, N.NetworkTCP, M.ParseSocksaddr(addr))
-			},
+	// Как в AndroidLibXrayLite (Xray-версия приложения, v2rayNG) и NekoBox: два запроса по одному
+	// соединению, берётся меньшее время. Первый открывает соединение (TCP + REALITY/TLS до сервера и до
+	// сайта), второй идёт по уже открытому — это и есть задержка «туда-обратно» через сервер.
+	tr := &http.Transport{
+		TLSHandshakeTimeout: 6 * time.Second,
+		MaxIdleConnsPerHost: 1,
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return d.DialContext(ctx, N.NetworkTCP, M.ParseSocksaddr(addr))
 		},
+	}
+	defer tr.CloseIdleConnections()
+	client := &http.Client{
+		Timeout:       timeout,
+		Transport:     tr,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
 	ctx, cancel := context.WithTimeout(i.ctx, timeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, link, nil)
-	if err != nil {
-		return -1, err
+	best := int64(-1)
+	var lastErr error
+	for attempt := 0; attempt < 2; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, link, nil)
+		if err != nil {
+			return -1, err
+		}
+		start := time.Now()
+		resp, err := client.Do(req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+		resp.Body.Close()
+		if resp.StatusCode != 204 && resp.StatusCode != 200 {
+			lastErr = fmt.Errorf("HTTP %d", resp.StatusCode)
+			continue
+		}
+		if ms := time.Since(start).Milliseconds(); best < 0 || ms < best {
+			best = ms
+		}
 	}
-	start := time.Now()
-	resp, err := client.Do(req)
-	if err != nil {
-		return -1, err
+	if best < 0 {
+		return -1, lastErr
 	}
-	io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
-	resp.Body.Close()
-	if resp.StatusCode != 204 && resp.StatusCode != 200 {
-		return -1, fmt.Errorf("HTTP %d", resp.StatusCode)
-	}
-	return time.Since(start).Milliseconds(), nil
+	return best, nil
 }
 
 // Ping — задержка до сервера без подключения: временное ядро только с выходом к серверу.

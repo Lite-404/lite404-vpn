@@ -96,7 +96,6 @@ Android может усыплять VPN при выключенном экран
 Ограничение батареи снято — VPN не засыпает при выключенном экране	Battery restriction is off — the VPN does not sleep while the screen is off
 Пинг	Ping
 Пинг и проверка соединения	Ping and connection check
-Пинг — время полного запроса через сервер (подключение + ответ сайта), а не ICMP. Поэтому цифры выше, чем у обычного ping.	Ping is the time of a full request through the server (connect + site response), not ICMP, so it is higher than a plain ping.
 Пинговать серверы при открытии	Ping servers on open
 Проверить	Check
 Проверяем соединение…	Checking connection…
@@ -174,3 +173,4 @@ iCloud, App Store, обновления	iCloud, App Store, updates
 Эти сайты всегда идут через VPN, даже если они есть в списках «напрямую».	These websites always go through the VPN, even if they are in the “direct” lists.
 По одному в строке: сайт (example.ru — вместе с поддоменами), IP-адрес или подсеть (10.0.0.0/8).	One per line: a website (example.ru — including subdomains), an IP address or a subnet (10.0.0.0/8).
 Сайтов: %s, адресов: %s	Websites: %s, addresses: %s
+Пинг — время запроса через сервер по уже открытому соединению (как в v2rayNG и NekoBox), а не ICMP.	Ping is the time of a request through the server over an already open connection (as in v2rayNG and NekoBox), not ICMP.

@@ -47,12 +47,30 @@ const plist = `<?xml version="1.0" encoding="UTF-8"?>
 // coreTags — части ядра sing-box-extended (как в core/boxcore/build-aar.sh): WireGuard на gvisor, uTLS/Reality.
 const coreTags = "with_gvisor,with_utls,with_wireguard,badlinkname,tfogo_checklinkname0"
 
+// patchedMod — go.mod программы, где ядро заменено копией с правками lite404 (подстановка домена,
+// как у Xray): core/boxcore/cmd/patchcore. Без неё ядро не примет конфиг.
+func patchedMod() string {
+	cmd := exec.Command("go", "run", "./cmd/patchcore", "../../desktop")
+	cmd.Dir = "../core/boxcore"
+	cmd.Stderr = os.Stderr
+	out, err := cmd.Output()
+	if err != nil {
+		panic(fmt.Sprintf("правка ядра: %v", err))
+	}
+	return strings.TrimSpace(string(out))
+}
+
+var modfile string
+
 func build(goos, goarch, out, version string) []byte {
 	ldflags := "-s -w -checklinkname=0 -X main.version=" + version
 	if goos == "windows" {
 		ldflags += " -H windowsgui" // без чёрного окна консоли
 	}
-	cmd := exec.Command("go", "build", "-trimpath", "-tags", coreTags, "-ldflags", ldflags, "-o", out, ".")
+	if modfile == "" {
+		modfile = patchedMod()
+	}
+	cmd := exec.Command("go", "build", "-modfile="+modfile, "-trimpath", "-tags", coreTags, "-ldflags", ldflags, "-o", out, ".")
 	cmd.Env = append(os.Environ(), "GOOS="+goos, "GOARCH="+goarch, "CGO_ENABLED=0")
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	if err := cmd.Run(); err != nil {

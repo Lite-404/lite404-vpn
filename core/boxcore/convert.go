@@ -95,7 +95,7 @@ func (c *converter) convert(root obj) (obj, error) {
 
 	// входы
 	var inbounds []any
-	sniff := false
+	var sniff []any // правила sniff по входам (идут первыми)
 	for _, raw := range listOf(root["inbounds"]) {
 		ib := mapOf(raw)
 		if ib == nil {
@@ -109,7 +109,7 @@ func (c *converter) convert(root obj) (obj, error) {
 			continue
 		}
 		if s := mapOf(ib["sniffing"]); s != nil && truthy(s["enabled"]) {
-			sniff = true
+			sniff = append(sniff, sniffRules(str(conv, "tag"), s)...)
 		}
 		inbounds = append(inbounds, conv)
 	}
@@ -624,11 +624,36 @@ func (c *converter) inbound(ib obj) (obj, error) {
 
 // ---------- маршрутизация ----------
 
-func (c *converter) route(r obj, sniff bool, strategy string) (obj, error) {
-	var rules []any
-	if sniff {
-		rules = append(rules, obj{"action": "sniff"})
+// sniffRules — sniffing входа Xray. routeOnly=false (по умолчанию в Xray): найденный в TLS/HTTP домен
+// подставляется в соединение и уходит на сервер вместо IP — адрес резолвит сервер, как у Xray.
+// Только для TCP: для UDP (QUIC) ядро не умеет вернуть ответы с исходного адреса.
+// override_destination — правка ядра из _singbox (без -overlay конфиг не примется).
+func sniffRules(tag string, s obj) []any {
+	cond := func(r obj) obj {
+		if tag != "" {
+			r["inbound"] = []string{tag}
+		}
+		return r
 	}
+	override := false
+	if !truthy(s["routeOnly"]) {
+		for _, d := range strList(s["destOverride"]) {
+			if d == "tls" || d == "http" {
+				override = true
+			}
+		}
+	}
+	if !override {
+		return []any{cond(obj{"action": "sniff"})}
+	}
+	return []any{
+		cond(obj{"network": "tcp", "action": "sniff", "override_destination": true}),
+		cond(obj{"network": "udp", "action": "sniff"}),
+	}
+}
+
+func (c *converter) route(r obj, sniff []any, strategy string) (obj, error) {
+	rules := append([]any{}, sniff...)
 	ds := strings.ToLower(str(r, "domainStrategy"))
 	needResolve := ds == "ipifnonmatch" || ds == "ipondemand"
 	for _, raw := range listOf(r["rules"]) {

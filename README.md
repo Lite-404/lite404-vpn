@@ -48,7 +48,7 @@ VPN-клиент для Android, Windows, macOS и Linux
 
 Понадобятся JDK 17, Android SDK 35 и NDK, Go 1.26+.
 
-1. Соберите ядро `app/libs/vpncore.aar` (Go 1.26+, Android NDK, gomobile): `core/boxcore/build-aar.sh` — подробности в начале скрипта. Из-за размера файл не хранится в репозитории.
+1. Соберите ядро `app/libs/vpncore.aar` (Go 1.26+, Android NDK, gomobile): `core/boxcore/build-aar.sh` — подробности в начале скрипта. Из-за размера файл не хранится в репозитории. Ядро собирается с небольшой правкой sing-box-extended (`core/boxcore/_singbox`, подстановка домена из TLS/HTTP в соединение, как у Xray): скрипт и `desktop/pack` подключают её сами через `core/boxcore/cmd/patchcore`; для `go test`/`go build` вручную — `-modfile=$(go run ./cmd/patchcore)` (в `core/boxcore`) или `-modfile=$(cd ../core/boxcore && go run ./cmd/patchcore ../../desktop)` (в `desktop`).
 2. Создайте `local.properties` в корне проекта:
    ```properties
    sdk.dir=/путь/к/android/sdk

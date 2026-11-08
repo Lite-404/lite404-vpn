@@ -7,5 +7,7 @@ local.properties
 # ядро sing-box-extended (~30 МБ) собирается из исходников: core/boxcore/build-aar.sh → app/libs/vpncore.aar
 app/libs/*.aar
 app/libs/*-sources.jar
+# копия ядра с правками lite404 (core/boxcore/cmd/patchcore)
+core/boxcore/_singbox/build/
 .idea/
 *.iml

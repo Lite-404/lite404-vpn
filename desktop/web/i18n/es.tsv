@@ -140,6 +140,7 @@ iCloud, App Store, обновления	iCloud, App Store, actualizaciones
 Эти сайты всегда идут через VPN, даже если они есть в списках «напрямую».	Estos sitios siempre van por la VPN, aunque estén en las listas «directo».
 По одному в строке: сайт (example.ru — вместе с поддоменами), IP-адрес или подсеть (10.0.0.0/8).	Uno por línea: un sitio (example.ru — con sus subdominios), una dirección IP o una subred (10.0.0.0/8).
 Сайтов: %s, адресов: %s	Sitios: %s, direcciones: %s
+Пинг — время запроса через сервер по уже открытому соединению (как в v2rayNG и NekoBox), а не ICMP.	El ping es el tiempo de una solicitud a través del servidor por una conexión ya abierta (como en v2rayNG y NekoBox), no ICMP.
 
 Устанавливаем обновление…	Instalando actualización…
 Перезапуск…	Reiniciando…

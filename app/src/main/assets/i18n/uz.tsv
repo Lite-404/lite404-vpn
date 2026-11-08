@@ -140,3 +140,4 @@ iCloud, App Store, обновления	iCloud, App Store, yangilanishlar
 Эти сайты всегда идут через VPN, даже если они есть в списках «напрямую».	Bu saytlar «to'g'ridan-to'g'ri» ro'yxatlarida bo'lsa ham, doim VPN orqali o'tadi.
 По одному в строке: сайт (example.ru — вместе с поддоменами), IP-адрес или подсеть (10.0.0.0/8).	Har qatorga bittadan: sayt (example.ru — subdomenlari bilan), IP-manzil yoki tarmoq (10.0.0.0/8).
 Сайтов: %s, адресов: %s	Saytlar: %s, manzillar: %s
+Пинг — время запроса через сервер по уже открытому соединению (как в v2rayNG и NekoBox), а не ICMP.	Ping — allaqachon ochiq ulanish orqali server orqali so'rov vaqti (v2rayNG va NekoBox'dagidek), ICMP emas.
