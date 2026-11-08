@@ -568,6 +568,8 @@ $('quitBtn').onclick = () => dialog(tr('Закрыть программу?'), tr
   document.body.innerHTML = '<div style="padding:40px;text-align:center;color:#8a8a90"></div>'; document.body.firstChild.textContent = tr('Программа закрыта. Эту вкладку можно закрыть.');
 }, true]]);
 const timer = setInterval(() => { if (!busy) api('state').catch(() => {}); if (tab === 'logs') loadLogs(); }, 1000);
+// во время пинга — чаще, чтобы каждый ответ сервера появлялся сразу
+setInterval(() => { if (!busy && S && S.pinging) api('state').catch(() => {}); }, 250);
 api('state');
 </script>
 </body>

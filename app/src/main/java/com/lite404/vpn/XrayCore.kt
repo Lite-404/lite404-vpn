@@ -50,25 +50,38 @@ object XrayCore {
 
     /**
      * Пинг всех серверов (полный запрос [url] через каждый сервер), мс; -1 — нет ответа.
-     * Замер делает служба в процессе «:ping»; здесь только ждём файл с результатом.
+     * Замер делает служба в процессе «:ping»; здесь читаем её файл и отдаём каждый результат
+     * в [onResult] (в главном потоке) сразу, как сервер ответил, не дожидаясь остальных.
      */
-    suspend fun pingAll(ctx: Context, servers: List<XrayServer>, url: String): Map<Int, Long> = withContext(Dispatchers.IO) {
-        if (servers.isEmpty()) return@withContext emptyMap()
+    suspend fun pingAll(ctx: Context, servers: List<XrayServer>, url: String, onResult: (Int, Long) -> Unit) = withContext(Dispatchers.IO) {
+        if (servers.isEmpty()) return@withContext
         val app = ctx.applicationContext
         val id = UUID.randomUUID().toString().take(8)
         val file = PingService.resultFile(app.filesDir, id)
         val configs = JSONArray().apply { servers.forEach { put(it.config) } }
+        val reported = HashSet<Int>()
+        suspend fun report(i: Int, ms: Long) {
+            if (reported.add(i)) withContext(Dispatchers.Main) { onResult(i, ms) }
+        }
         val started = runCatching {
             app.startService(Intent(app, PingService::class.java)
                 .putExtra(PingService.EXTRA_CONFIGS, configs.toString())
                 .putExtra(PingService.EXTRA_URL, url)
                 .putExtra(PingService.EXTRA_ID, id))
         }.isSuccess
-        if (!started) return@withContext servers.indices.associateWith { -1L }
-        val end = System.currentTimeMillis() + 30_000
-        while (!file.exists() && System.currentTimeMillis() < end) delay(200)
-        val json = runCatching { JSONObject(file.readText()) }.getOrNull()
-        file.delete()
-        servers.indices.associateWith { i -> json?.optLong(i.toString(), -1L) ?: -1L }
+        if (started) {
+            val end = System.currentTimeMillis() + 30_000
+            var done = false
+            while (!done && System.currentTimeMillis() < end) {
+                delay(150)
+                val json = if (file.exists()) runCatching { JSONObject(file.readText()) }.getOrNull() else null
+                if (json != null) {
+                    for (i in servers.indices) if (json.has(i.toString())) report(i, json.optLong(i.toString(), -1L))
+                    done = json.optBoolean("done")
+                }
+            }
+            file.delete()
+        }
+        for (i in servers.indices) report(i, -1L)
     }
 }

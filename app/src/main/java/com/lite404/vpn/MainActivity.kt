@@ -450,7 +450,7 @@ private fun VpnTab(model: AppModel, live: LiveState) {
         pings.clear()
         scope.launch {
             try {
-                pings.putAll(XrayCore.pingAll(ctx, servers, model.prefs.pingUrl))
+                XrayCore.pingAll(ctx, servers, model.prefs.pingUrl) { i, ms -> pings[i] = ms }
             } finally {
                 pinging = false
             }
