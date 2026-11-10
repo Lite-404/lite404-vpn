@@ -106,19 +106,22 @@ object AppApi {
             "Content-Type" to "application/json"
         )
         val payload = "{}".toByteArray()
-        val (code, body) = try {
-            post(ssl, token.addr, headers, payload)
+        val host = DirectHttps.apiHost(token.addr)
+        val port = DirectHttps.API_PORT
+        val failures = mutableListOf<Throwable>()
+        var res: Pair<Int, String>? = null
+        // 1) Имя через свой DNS (DoH) → соединение на найденный IP, SNI и Host = имя
+        for (ip in DirectHttps.resolve(host)) {
+            res = runCatching { DirectHttps.post(ssl, ip, port, host, PATH, headers, payload, 10000, 20000) }
+                .onFailure { failures += it }.getOrNull()
+            if (res != null) break
+        }
+        // 2) Свой DNS недоступен — через системный DNS
+        val (code, body) = res ?: try {
+            post(ssl, "$host:$port", headers, payload)
         } catch (e: java.io.IOException) {
-            // Имя не нашлось / не тот сервер / не соединилось — пробуем напрямую по IP с тем же SNI
-            val host = DirectHttps.splitAddr(token.addr).first
-            var res: Pair<Int, String>? = null
-            for ((ip, port) in DirectHttps.fallbacksFor(token.addr)) {
-                res = runCatching {
-                    DirectHttps.post(ssl, ip, port, host, PATH, headers, payload, 10000, 20000)
-                }.onFailure { e.addSuppressed(it) }.getOrNull()
-                if (res != null) break
-            }
-            res ?: throw e
+            failures.forEach { e.addSuppressed(it) }
+            throw e
         }
         val err = runCatching { JSONObject(body).optString("error") }.getOrDefault("")
         when {

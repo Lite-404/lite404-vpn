@@ -5,25 +5,59 @@ import java.io.IOException
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
+import java.net.URL
+import java.net.URLEncoder
+import javax.net.ssl.HttpsURLConnection
 import javax.net.ssl.SNIHostName
 import javax.net.ssl.SSLContext
 import javax.net.ssl.SSLSocket
 
 /**
- * Запасной путь к API приложения, когда имя сервера не находится (сломан DNS у провайдера/в телефоне)
- * или по имени отвечает не наш сервер: соединение идёт на известный IP, а в TLS (SNI) и в Host
- * передаётся прежнее имя — nginx без SNI соединение сбрасывает. Доверие — по-прежнему по отпечатку
+ * Путь к API приложения. Порт всегда 443. Имя сервера ищется своим DNS (DoH по IP-адресу, мимо
+ * системного DNS — у провайдера он бывает сломан или подменён), соединение идёт на найденный IP,
+ * а в TLS (SNI) и в Host передаётся имя — сервер выбирает назначение по SNI. Доверие — по отпечатку
  * сертификата из токена (его проверяет TrustManager внутри [ssl]).
  */
 object DirectHttps {
-    /** Имя из токена → IP того же сервера. */
-    val fallbackIps: Map<String, List<String>> = mapOf("app.barked.fun" to listOf("88.151.114.227"))
+    const val API_DOMAIN = "app.barked.fun"
+    const val API_PORT = 443
+
+    /** Старые токены выданы на IP старого сервера (88.151.114.227:2097) — их ведём на домен. */
+    private val legacyHosts = setOf("88.151.114.227")
+
+    /** Свой DNS: DoH JSON API Cloudflare и Google по IP-адресу. */
+    private val dohUrls = listOf("https://1.1.1.1/dns-query?type=A&name=", "https://8.8.8.8/resolve?type=A&name=")
 
     private const val MAX_BODY = 8 shl 20
 
-    fun fallbacksFor(addr: String): List<Pair<String, Int>> {
-        val (host, port) = splitAddr(addr)
-        return fallbackIps[host.lowercase()].orEmpty().map { it to port }
+    /** Имя сервера API из адреса токена (порт токена не используется). */
+    fun apiHost(addr: String): String {
+        val host = splitAddr(addr).first.lowercase()
+        return if (host in legacyHosts) API_DOMAIN else host
+    }
+
+    /** IPv4-адреса имени через свой DNS; пусто — DoH недоступен. */
+    fun resolve(host: String): List<String> {
+        for (u in dohUrls) {
+            val ips = runCatching {
+                val c = URL(u + URLEncoder.encode(host, "UTF-8")).openConnection() as HttpsURLConnection
+                c.connectTimeout = 5000
+                c.readTimeout = 5000
+                c.setRequestProperty("Accept", "application/dns-json")
+                try { parseDoh(c.inputStream.bufferedReader().use { it.readText() }) } finally { c.disconnect() }
+            }.getOrDefault(emptyList())
+            if (ips.isNotEmpty()) return ips
+        }
+        return emptyList()
+    }
+
+    /** Ответ DoH JSON: записи type 1 (A) из "Answer". */
+    fun parseDoh(json: String): List<String> {
+        val answer = json.substringAfter("\"Answer\"", "")
+        return Regex("""\{[^{}]*\}""").findAll(answer).map { it.value }
+            .filter { Regex(""""type"\s*:\s*1\b""").containsMatchIn(it) }
+            .mapNotNull { Regex(""""data"\s*:\s*"(\d{1,3}(?:\.\d{1,3}){3})"""").find(it)?.groupValues?.get(1) }
+            .toList()
     }
 
     fun splitAddr(addr: String): Pair<String, Int> {

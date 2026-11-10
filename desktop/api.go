@@ -14,6 +14,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"runtime"
 	"strings"
 	"time"
@@ -100,16 +101,20 @@ func FetchConfig(t *Token, hwid string) (*AppConfig, []byte, error) {
 		return nil
 	}
 	tlsConf := &tls.Config{InsecureSkipVerify: true, VerifyPeerCertificate: pin}
-	resp, err := postConfig(t, hwid, tlsConf, nil)
-	if err != nil {
-		// Имя не нашлось / не тот сервер / не соединилось — напрямую по IP с тем же SNI и Host
-		host, port, _ := net.SplitHostPort(t.Addr)
-		for _, ip := range apiFallbackIPs[strings.ToLower(host)] {
-			if r, e2 := postConfig(t, hwid, tlsConf, &fallbackDial{addr: net.JoinHostPort(ip, port)}); e2 == nil {
-				resp, err = r, nil
-				break
-			}
+	host := apiHost(t.Addr)
+	tok := *t
+	tok.Addr = net.JoinHostPort(host, apiPort)
+	var resp *http.Response
+	err := errors.New("DNS не нашёл адрес сервера")
+	// 1) Имя через свой DNS (DoH по IP) → соединение на найденный IP, SNI и Host = имя
+	for _, ip := range resolveAPI(host) {
+		if resp, err = postConfig(&tok, hwid, tlsConf, &fallbackDial{addr: net.JoinHostPort(ip, apiPort)}); err == nil {
+			break
 		}
+	}
+	// 2) Свой DNS недоступен — через системный DNS
+	if err != nil {
+		resp, err = postConfig(&tok, hwid, tlsConf, nil)
 	}
 	if err != nil {
 		return nil, nil, fmt.Errorf("нет связи с сервером: %v", err)
@@ -131,10 +136,64 @@ func FetchConfig(t *Token, hwid string) (*AppConfig, []byte, error) {
 	return &c, body, nil
 }
 
-// apiFallbackIPs — имя сервера из токена → его IP. Нужен, когда у пользователя не работает DNS
-// или по имени отвечает не наш сервер: соединяемся с IP, а SNI и Host остаются прежними
-// (без SNI nginx соединение сбрасывает), доверие — по отпечатку сертификата.
-var apiFallbackIPs = map[string][]string{"app.barked.fun": {"88.151.114.227"}}
+// API приложения всегда на порту 443. Старые токены выданы на IP старого сервера (88.151.114.227:2097) —
+// их ведём на домен app.barked.fun.
+const apiDomain = "app.barked.fun"
+
+var (
+	apiPort        = "443"
+	legacyAPIHosts = map[string]bool{"88.151.114.227": true}
+	// Свой DNS для имени API: DoH по IP-адресу, мимо системного DNS (у провайдера он бывает сломан или подменён).
+	apiDoH     = []string{"https://1.1.1.1/dns-query?type=A&name=", "https://8.8.8.8/resolve?type=A&name="}
+	resolveAPI = resolveDoH
+)
+
+// apiHost — имя сервера API из адреса токена (порт токена не используется).
+func apiHost(addr string) string {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		host = addr
+	}
+	host = strings.ToLower(host)
+	if legacyAPIHosts[host] {
+		return apiDomain
+	}
+	return host
+}
+
+// resolveDoH — IPv4-адреса имени через DoH (JSON API Cloudflare/Google); пусто — DoH недоступен.
+func resolveDoH(host string) []string {
+	c := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{Proxy: nil}}
+	for _, u := range apiDoH {
+		req, _ := http.NewRequest("GET", u+url.QueryEscape(host), nil)
+		req.Header.Set("Accept", "application/dns-json")
+		resp, err := c.Do(req)
+		if err != nil {
+			continue
+		}
+		var r struct {
+			Answer []struct {
+				Type int    `json:"type"`
+				Data string `json:"data"`
+			} `json:"Answer"`
+		}
+		err = json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&r)
+		resp.Body.Close()
+		if err != nil {
+			continue
+		}
+		var ips []string
+		for _, a := range r.Answer {
+			if ip := net.ParseIP(a.Data); a.Type == 1 && ip != nil && ip.To4() != nil {
+				ips = append(ips, a.Data)
+			}
+		}
+		if len(ips) > 0 {
+			return ips
+		}
+	}
+	return nil
+}
 
 type fallbackDial struct{ addr string }
 
