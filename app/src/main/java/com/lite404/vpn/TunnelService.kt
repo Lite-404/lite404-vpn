@@ -13,7 +13,9 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.wifi.WifiManager
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -30,11 +32,6 @@ private const val TUNNEL_NOTIFICATION_ID = 1
 private const val NETWORK_SETTLE_MS = 2_000L
 private const val RECOVERY_CHECK_MS = 25_000L
 private const val LONG_LOSS_MS = 45_000L
-private const val MIN_NETWORK_RESTART_GAP_MS = 60_000L
-
-private fun isVpn(cm: ConnectivityManager, network: Network): Boolean =
-    cm.getNetworkCapabilities(network)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
-
 class TunnelService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
@@ -49,7 +46,6 @@ class TunnelService : Service() {
     private var lostNetwork: Network? = null
     /** Последняя известная сеть (не сбрасывается при потере): отличает «та же вернулась» от «сменилась». */
     private var lastNetwork: Network? = null
-    private var lastNetworkRestartAt = 0L
     private var networkJob: Job? = null
     private var isTunnelPaused = false
 
@@ -194,24 +190,21 @@ class TunnelService : Service() {
         val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         connectivityManager = cm
         currentNetwork = cm.activeNetwork?.takeIf {
-            cm.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == false
+            cm.getNetworkCapabilities(it)?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN) == true
         }
         lastNetwork = currentNetwork
+        TunnelManager.networkAvailable = currentNetwork != null
         val callback = object : ConnectivityManager.NetworkCallback() {
-            // Сети VPN (в том числе наш же WireGuard) игнорируем — как NOT_VPN в официальном WDTT.
-            // Иначе подъём туннеля выглядит как «смена сети» → перезапуск клиента → снова туннель → по кругу.
             override fun onAvailable(network: Network) {
-                if (isVpn(cm, network)) return
-                TunnelManager.scope.launch(Dispatchers.Main) { onNetworkAvailable(network) }
+                if (networkCallback === this && network != currentNetwork) onNetworkAvailable(network)
             }
 
             override fun onLost(network: Network) {
-                if (isVpn(cm, network)) return
-                TunnelManager.scope.launch(Dispatchers.Main) { onNetworkLost(network) }
+                if (networkCallback === this) onNetworkLost(network)
             }
         }
         try {
-            cm.registerDefaultNetworkCallback(callback)
+            cm.watchUnderlyingNetwork(callback, Handler(Looper.getMainLooper()))
             networkCallback = callback
         } catch (e: Exception) {
             Log.e("TunnelService", "Не удалось подписаться на смену сети", e)
@@ -237,17 +230,13 @@ class TunnelService : Service() {
         // Перезапуск Go-клиента — дорогой (новые креды VK; старые потоки ещё висят на сервере и
         // вместе с новыми упираются в лимит), поэтому трогаем транспорт только при реальной смене
         // сети или если после настоящей потери сети потоки так и не ожили.
+        networkJob?.cancel()
         if (previous == null || (previous == network && !wasLost)) return
         if (!TunnelManager.running.value) return
-        networkJob?.cancel()
         networkJob = TunnelManager.scope.launch(Dispatchers.Main) {
             if (previous != network) {
                 delay(NETWORK_SETTLE_MS)
-                if (System.currentTimeMillis() - lastNetworkRestartAt < MIN_NETWORK_RESTART_GAP_MS) {
-                    Log.d("TunnelService", "Сеть сменилась, но транспорт перезапускался меньше минуты назад — не трогаем")
-                    return@launch
-                }
-                lastNetworkRestartAt = System.currentTimeMillis()
+                if (ManlCaptchaWebViewManager.isCaptchaPending) return@launch
                 Log.d("TunnelService", "Сеть сменилась — мягкий перезапуск транспорта")
                 TunnelManager.restartTransport()
             } else {

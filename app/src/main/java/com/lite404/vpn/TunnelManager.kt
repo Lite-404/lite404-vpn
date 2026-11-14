@@ -38,6 +38,7 @@ object TunnelManager {
     private var process: Process? = null
     private var readerJob: Job? = null
     private var watchdogJob: Job? = null
+    private var restartJob: Job? = null
     private var wgHelper: WireGuardHelper? = null
     
     private val startStopMutex = kotlinx.coroutines.sync.Mutex()
@@ -84,7 +85,7 @@ object TunnelManager {
 
     
 
-    private fun handleTunnelEvent(event: TunnelEventParser.Event, now: Long): Boolean {
+    private fun handleTunnelEvent(event: TunnelEventParser.Event, now: Long, proc: Process): Boolean {
         when (event) {
             is TunnelEventParser.Event.Stats -> {
                 activeWorkers.value = event.active
@@ -104,13 +105,7 @@ object TunnelManager {
                 val configStr = event.config.trim()
                 if (configStr.isNotEmpty()) {
                     config.value = configStr
-                    scope.launch(Dispatchers.Main) {
-                        try {
-                            wgHelper?.startTunnel(configStr)
-                        } catch (e: Exception) {
-                            updateLog("vpn_start_error", "Ошибка запуска VPN: ${e.readableMessage()}", 99, true)
-                        }
-                    }
+                    applyWireGuardConfig(proc, configStr)
                 }
             }
             is TunnelEventParser.Event.Error -> {
@@ -190,6 +185,7 @@ object TunnelManager {
         scope.launch {
             startStopMutex.lock()
             try {
+                if (stopRequested) return@launch
                 if (running.value && !isSwitching) return@launch
         
                 val appContext = context.applicationContext 
@@ -324,6 +320,7 @@ object TunnelManager {
                 var lastResetTime = System.currentTimeMillis()
 
                 reader.forEachLine { line ->
+                    if (process !== proc || stopRequested) return@forEachLine
                     val now = System.currentTimeMillis()
                     if (now - lastResetTime > 60000) {
                         refusedCount = 0
@@ -338,7 +335,7 @@ object TunnelManager {
 
                     
                     val event = TunnelEventParser.parse(lineTrim)
-                    if (event != null && handleTunnelEvent(event, now)) {
+                    if (event != null && handleTunnelEvent(event, now, proc)) {
                         return@forEachLine
                     }
 
@@ -583,14 +580,7 @@ object TunnelManager {
                             collectingConfig = false
                             val configStr = configBuilder.toString().trim()
                             config.value = configStr
-                            
-                            scope.launch(Dispatchers.Main) {
-                                try {
-                                    wgHelper?.startTunnel(configStr)
-                                } catch (e: Exception) {
-                                    updateLog("vpn_start_error", "Ошибка запуска VPN: ${e.readableMessage()}", 99, true)
-                                }
-                            }
+                            applyWireGuardConfig(proc, configStr)
                         } else if (line.contains("║")) {
                             val content = line.replace("║", "").trim()
                             if (content.isNotEmpty()) {
@@ -621,6 +611,19 @@ object TunnelManager {
                         running.value = false
                     }
                 }
+            }
+        }
+    }
+
+    private fun applyWireGuardConfig(proc: Process, config: String) {
+        scope.launch {
+            startStopMutex.lock()
+            try {
+                if (process === proc && !stopRequested && !paused.value) wgHelper?.startTunnel(config)
+            } catch (e: Exception) {
+                updateLog("vpn_start_error", "Ошибка запуска VPN: ${e.readableMessage()}", 99, true)
+            } finally {
+                startStopMutex.unlock()
             }
         }
     }
@@ -706,11 +709,19 @@ object TunnelManager {
     private fun restartProcess(delayMs: Long) {
         val params = currentParams ?: return
         val context = lastContext ?: return
+        if (stopRequested || restartJob?.isActive == true) return
         starting.value = true
-        killProcess()
-        scope.launch {
+        restartJob = scope.launch {
+            startStopMutex.lock()
+            try {
+                if (stopRequested) return@launch
+                killProcess()
+                activeWorkers.value = 0
+            } finally {
+                startStopMutex.unlock()
+            }
             delay(delayMs)
-            if (stopRequested) { starting.value = false; return@launch }
+            if (stopRequested || paused.value) return@launch
             start(context, params, isSwitching = true)
         }
     }
@@ -718,9 +729,19 @@ object TunnelManager {
     fun pause() {
         if (!running.value) return
         paused.value = true
-        killProcess()
-        running.value = false
-        activeWorkers.value = 0
+        restartJob?.cancel()
+        scope.launch {
+            startStopMutex.lock()
+            try {
+                if (!paused.value) return@launch
+                killProcess()
+                running.value = false
+                starting.value = false
+                activeWorkers.value = 0
+            } finally {
+                startStopMutex.unlock()
+            }
+        }
     }
 
     fun resume() {
@@ -751,6 +772,7 @@ object TunnelManager {
 
     fun stop() {
         stopRequested = true
+        restartJob?.cancel()
         starting.value = false
         paused.value = false
         scope.launch {
@@ -772,6 +794,7 @@ object TunnelManager {
 
     suspend fun stopAndWait() {
         stopRequested = true
+        restartJob?.cancel()
         starting.value = false
         paused.value = false
         startStopMutex.lock()

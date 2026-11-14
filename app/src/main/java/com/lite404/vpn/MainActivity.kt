@@ -416,11 +416,11 @@ private fun PowerIcon(color: Color) {
 }
 
 @Composable
-private fun <T> Picker(label: String, items: List<T>, selected: Int, name: (T) -> String, onPick: (Int) -> Unit) {
+private fun <T> Picker(label: String, items: List<T>, selected: Int, name: (T) -> String, enabled: Boolean = true, onPick: (Int) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
         Row(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Card).clickable(enabled = items.size > 1) { open = true }
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Card).clickable(enabled = enabled && items.size > 1) { open = true }
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -430,13 +430,15 @@ private fun <T> Picker(label: String, items: List<T>, selected: Int, name: (T) -
             }
             if (items.size > 1) Icon(Icons.Default.ArrowDropDown, null, tint = Muted)
         }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+        DropdownMenu(expanded = open && enabled, onDismissRequest = { open = false }) {
             items.forEachIndexed { i, it ->
                 DropdownMenuItem(text = { Text(name(it)) }, onClick = { open = false; onPick(i) })
             }
         }
     }
 }
+
+private fun ConnState.canSelectServer() = phase == Phase.OFF || phase == Phase.ON
 
 @Composable
 private fun VpnTab(model: AppModel, live: LiveState) {
@@ -526,10 +528,10 @@ private fun VpnTab(model: AppModel, live: LiveState) {
         }
         if (servers.isEmpty()) Text(tr("Нет серверов"), color = Muted, modifier = Modifier.fillMaxWidth().padding(4.dp))
         servers.forEachIndexed { i, srv ->
-            ServerRow(srv.name, i == index, pings[i], pinging && i !in pings) {
-                if (i != index) {
+            ServerRow(srv.name, i == index, pings[i], pinging && i !in pings, conn.canSelectServer()) {
+                if (i != index && Connection.state.value.canSelectServer()) {
                     index = i; model.prefs.xrayIndex = i
-                    if (mine && conn.phase == Phase.ON) askVpn() // переподключение к новому серверу
+                    if (Connection.state.value.mode == VpnMode.XRAY) askVpn()
                 }
             }
             Spacer(Modifier.height(8.dp))
@@ -566,11 +568,11 @@ private fun StatusLine(conn: ConnState, tabMode: VpnMode) {
 }
 
 @Composable
-private fun ServerRow(name: String, selected: Boolean, ping: Long?, pinging: Boolean, onClick: () -> Unit) {
+private fun ServerRow(name: String, selected: Boolean, ping: Long?, pinging: Boolean, enabled: Boolean, onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Card)
             .border(1.5.dp, if (selected) Accent else Color.Transparent, RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 14.dp),
+            .clickable(enabled = enabled, onClick = onClick).padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(name, fontSize = 16.sp, modifier = Modifier.weight(1f))
@@ -584,7 +586,7 @@ private fun ServerRow(name: String, selected: Boolean, ping: Long?, pinging: Boo
             )
         }
         Spacer(Modifier.width(12.dp))
-        RadioButton(selected = selected, onClick = onClick, modifier = Modifier.size(24.dp))
+        RadioButton(selected = selected, onClick = onClick, enabled = enabled, modifier = Modifier.size(24.dp))
     }
 }
 
@@ -678,10 +680,11 @@ private fun WdttTab(model: AppModel, live: LiveState) {
             TextButton(onClick = { openUrl(ctx, BOT_URL) }) { Text(tr("Открыть бота")) }
         }
         Spacer(Modifier.height(24.dp))
-        Picker(tr("Страна"), servers, index, { it.name }) {
+        Picker(tr("Страна"), servers, index, { it.name }, enabled = conn.canSelectServer()) {
+            if (it == index || !Connection.state.value.canSelectServer()) return@Picker
             index = it; model.prefs.wdttIndex = it
             // включён WDTT — сразу переподключаемся к новой стране
-            if (mine && conn.phase == Phase.ON) askVpn()
+            if (Connection.state.value.mode == VpnMode.WDTT) askVpn()
         }
     }
 }

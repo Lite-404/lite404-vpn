@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.net.ConnectivityManager
+import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.VpnService
@@ -16,11 +17,22 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
 import android.os.ParcelFileDescriptor
+import android.util.AtomicFile
 import android.util.Log
 import com.lite404.vpncore.Platform
 import com.lite404.vpncore.Vpncore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.android.asCoroutineDispatcher
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.net.NetworkInterface
+import java.util.UUID
 
 /**
  * Обычный VPN: ядро sing-box-extended (библиотека vpncore) в отдельном процессе «:xray».
@@ -29,9 +41,8 @@ import java.net.NetworkInterface
  *   xray_state  running | connecting | stopped | error:<текст>
  *   xray_test   ok:<мс> | fail:<текст> | testing — результат проверки соединения через туннель
  *
- * Смена сети (Wi-Fi ↔ мобильная, возврат сети после сна): туннель пересобирается на месте —
- * новый TUN поднимается раньше, чем закрывается старый, поэтому трафик не уходит мимо VPN,
- * а старые «мёртвые» соединения рвутся сразу, а не через таймаут в 5 минут.
+ * При смене сети передаём новый интерфейс ядру. Оно закрывает старые соединения,
+ * сохраняя TUN и правила Android VPN.
  */
 class XrayVpnService : VpnService() {
     companion object {
@@ -41,6 +52,7 @@ class XrayVpnService : VpnService() {
         const val ACTION_START = "com.lite404.vpn.XRAY_START"
         const val ACTION_STOP = "com.lite404.vpn.XRAY_STOP"
         const val ACTION_TEST = "com.lite404.vpn.XRAY_TEST"
+        private const val EXTRA_REQUEST = "request"
         const val EXTRA_NAME = "name"
         const val EXTRA_APPS_MODE = "apps_mode"
         const val EXTRA_APPS = "apps"
@@ -48,28 +60,44 @@ class XrayVpnService : VpnService() {
         const val EXTRA_TEST_AFTER = "test_after"
         const val EXTRA_LAN_DIRECT = "lan_direct"
 
-        /** Пауза после смены сети, чтобы не дёргать туннель на каждое мигание Wi-Fi. */
-        private const val NETWORK_SETTLE_MS = 1500L
-        /** Адреса TUN — те же, что в [establishTun]: ядру они нужны для своего сетевого стека. */
         private const val TUN_ADDRESSES = "10.10.14.1/30,fd66:6c34:3034::1/126"
+        // Ядро общее для процесса, включая смену экземпляра сервиса.
+        private val bg by lazy {
+            val thread = HandlerThread("xray-control").apply { start() }
+            Handler(thread.looper)
+        }
 
-        /** Сколько ждём возврата сети, прежде чем считать её потерянной. */
-        private const val NETWORK_LOSS_GRACE_MS = 3000L
-
-        /** Номер экземпляра службы в процессе — чтобы отложенное завершение процесса не убило новый запуск. */
-        @Volatile private var instances = 0
-
-        fun configFile(ctx: Context) = File(ctx.filesDir, "xray.json")
-        private fun stateFile(ctx: Context) = File(ctx.filesDir, "xray_state")
-        private fun testFile(ctx: Context) = File(ctx.filesDir, "xray_test")
+        private fun configFile(ctx: Context) = AtomicFile(File(ctx.filesDir, "xray.json"))
+        private fun stateFile(ctx: Context) = AtomicFile(File(ctx.filesDir, "xray_state"))
+        private fun testFile(ctx: Context) = AtomicFile(File(ctx.filesDir, "xray_test"))
         private fun sinceFile(ctx: Context) = File(ctx.filesDir, "xray_since")
+
+        private fun AtomicFile.readText() = readFully().toString(Charsets.UTF_8)
+
+        private fun AtomicFile.writeText(value: String) {
+            val output = startWrite()
+            try {
+                output.write(value.toByteArray(Charsets.UTF_8))
+                finishWrite(output)
+            } catch (e: Exception) {
+                failWrite(output)
+                throw e
+            }
+        }
 
         /** running | connecting | stopped | error:<текст> */
         fun state(ctx: Context): String {
-            val s = runCatching { stateFile(ctx).readText() }.getOrDefault("stopped").ifBlank { "stopped" }
+            val record = runCatching { stateFile(ctx).readText() }.getOrDefault("")
+            val s = record.substringAfter('\n').ifBlank { "stopped" }
             // файл мог остаться от убитого процесса — проверяем, что служба действительно работает
             if ((s == "running" || s == "connecting") && !isAlive(ctx)) return "stopped"
             return s
+        }
+
+        fun startFinished(ctx: Context, request: String): Boolean {
+            val record = runCatching { stateFile(ctx).readText() }.getOrDefault("")
+            val status = record.substringAfter('\n')
+            return record.substringBefore('\n') == request && (status == "running" || status.startsWith("error:"))
         }
 
         /** Результат последней проверки соединения: ok:<мс>, fail:<текст>, testing или "". */
@@ -83,36 +111,34 @@ class XrayVpnService : VpnService() {
 
         /** Остановить и дождаться остановки (до 6 с). */
         suspend fun stopAndWait(ctx: Context) {
-            if (state(ctx).let { it != "running" && it != "connecting" }) return
-            stop(ctx)
-            repeat(60) {
-                if (state(ctx).let { it != "running" && it != "connecting" } && !isAlive(ctx)) return
-                kotlinx.coroutines.delay(100)
+            val previous = state(ctx)
+            if (previous != "running" && previous != "connecting" && !isAlive(ctx)) return
+            ctx.startService(Intent(ctx, XrayVpnService::class.java).setAction(ACTION_STOP))
+            repeat(70) {
+                if (runCatching { stateFile(ctx).readText() }.getOrNull() == "stopped" && !isAlive(ctx)) return
+                delay(100)
             }
+            check(!isAlive(ctx)) { tr("Не удалось остановить VPN") }
         }
 
-        fun start(ctx: Context, config: String, name: String) {
-            configFile(ctx).writeText(config)
-            writeState(ctx, "connecting")
-            testFile(ctx).delete()
+        fun start(ctx: Context, config: String, name: String): String {
+            val request = UUID.randomUUID().toString()
+            configFile(ctx).writeText("$request\n$config")
             val prefs = Prefs(ctx)
             val i = Intent(ctx, XrayVpnService::class.java).setAction(ACTION_START).putExtra(EXTRA_NAME, name)
+                .putExtra(EXTRA_REQUEST, request)
                 .putExtra(EXTRA_APPS_MODE, prefs.effectiveAppsMode())
                 .putExtra(EXTRA_APPS, prefs.apps.toTypedArray())
                 .putExtra(EXTRA_TEST_URL, prefs.pingUrl)
                 .putExtra(EXTRA_TEST_AFTER, prefs.testAfterConnect)
                 .putExtra(EXTRA_LAN_DIRECT, prefs.lanDirectXray)
-            if (Build.VERSION.SDK_INT >= 26) ctx.startForegroundService(i) else ctx.startService(i)
-        }
-
-        fun stop(ctx: Context) {
-            runCatching { ctx.startService(Intent(ctx, XrayVpnService::class.java).setAction(ACTION_STOP)) }
+            ctx.startForegroundService(i)
+            return request
         }
 
         /** Проверить соединение через работающий туннель (результат — в [testResult]). */
         fun test(ctx: Context) {
             if (state(ctx) != "running") return
-            writeTest(ctx, "testing")
             runCatching {
                 ctx.startService(Intent(ctx, XrayVpnService::class.java).setAction(ACTION_TEST)
                     .putExtra(EXTRA_TEST_URL, Prefs(ctx).pingUrl))
@@ -122,101 +148,71 @@ class XrayVpnService : VpnService() {
         /** Момент подключения (мс) или 0, если VPN не подключён. */
         fun since(ctx: Context): Long = runCatching { sinceFile(ctx).readText().trim().toLong() }.getOrDefault(0L)
 
-        private fun writeState(ctx: Context, s: String) = runCatching {
-            stateFile(ctx).writeText(s)
+        private fun writeState(ctx: Context, s: String, request: String? = null) = runCatching {
+            stateFile(ctx).writeText(if (request == null) s else "$request\n$s")
             if (s == "running") sinceFile(ctx).writeText(System.currentTimeMillis().toString()) else sinceFile(ctx).delete()
         }
 
         private fun writeTest(ctx: Context, s: String) = runCatching { testFile(ctx).writeText(s) }
     }
 
-    private var tun: ParcelFileDescriptor? = null
-    /** Конфиг sing-box текущего запуска (переведённый из xray.json); null — ядро не запущено. */
-    private var coreConfig: String? = null
+    private data class TunOptions(val appsMode: String, val apps: List<String>, val lanDirect: Boolean)
+
+    private data class Uplink(val network: Network, val name: String, val index: Int)
+
+    private val main = Handler(Looper.getMainLooper())
+    private val tests = CoroutineScope(SupervisorJob() + bg.asCoroutineDispatcher())
     private val platform = object : Platform {
         override fun protect(fd: Int): Boolean = this@XrayVpnService.protect(fd)
     }
-    @Volatile private var stopping = false
-    @Volatile private var stopped = false
-    private val lock = Any()
-    private val main = Handler(Looper.getMainLooper())
-    private val worker = HandlerThread("xray-control").apply { start() }
-    private val bg = Handler(worker.looper)
-    private var instance = 0
 
-    // параметры текущего запуска — нужны для пересборки туннеля при смене сети
-    private var appsMode = "off"
-    private var lanDirect = true
-    private var apps: List<String> = emptyList()
+    // Параметры сервиса читает и меняет только xray-control. Поколение команды меняется в главном потоке.
+    @Volatile private var command = 0L
+    private var lastStartId = 0
+    private var closing = false
+    private var tun: ParcelFileDescriptor? = null
+    private var tunOptions: TunOptions? = null
+    private var coreConfig: String? = null
+    private var activeRequest: String? = null
+    private var activeCommand = 0L
+    private var needsRecovery = false
+    private var testJob: Job? = null
     private var testUrl = Prefs.DEFAULT_PING_URL
+    private var testAfterConnect = false
 
-    private var connectivity: ConnectivityManager? = null
-    private var currentNetwork: Network? = null
-    /** Последняя известная сеть (не сбрасывается при потере) — чтобы отличить «та же вернулась» от «сменилась». */
-    private var lastNetwork: Network? = null
-    private var networkLost = false
-    private val rebuildTask = Runnable { rebuildForNetwork() }
-    private val lossTask = Runnable {
-        if (currentNetwork == null) {
-            networkLost = true
-            runCatching { setUnderlyingNetworks(null) }
-            Log.d(TAG, "сеть пропала — ждём возврата")
-        }
-    }
-
-    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
-        override fun onAvailable(network: Network) {
-            if (isVpnNetwork(network)) return   // наш же туннель — не «смена сети»
-            bg.removeCallbacks(lossTask)
-            val previous = lastNetwork
-            currentNetwork = network
-            lastNetwork = network
-            runCatching { setUnderlyingNetworks(arrayOf(network)) }
-            reportNetwork(network)
-            if (previous == null) return                        // первое уведомление сразу после подписки
-            if (previous == network && !networkLost) return     // та же сеть, соединения живы — ничего не трогаем
-            networkLost = false
-            Log.d(TAG, "сеть сменилась — пересобираем туннель")
-            bg.removeCallbacks(rebuildTask)
-            bg.postDelayed(rebuildTask, NETWORK_SETTLE_MS)
-        }
-
-        override fun onLost(network: Network) {
-            if (network != currentNetwork) return   // VPN-сети сюда не попадают: currentNetwork всегда не VPN
-            currentNetwork = null
-            bg.postDelayed(lossTask, NETWORK_LOSS_GRACE_MS)
-        }
-    }
-
-    override fun onCreate() {
-        super.onCreate()
-        instance = ++instances
-    }
+    private val connectivity by lazy { getSystemService(ConnectivityManager::class.java) }
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private var uplink: Uplink? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        lastStartId = startId
         when (intent?.action) {
-            ACTION_STOP -> { stopVpn(); return START_NOT_STICKY }
-            ACTION_TEST -> {
-                val url = intent.getStringExtra(EXTRA_TEST_URL) ?: testUrl
-                bg.post { runTest(url, attempts = 1) }
-                return START_NOT_STICKY
-            }
             ACTION_START -> {
-                val name = intent.getStringExtra(EXTRA_NAME) ?: ""
-                stopped = false
+                closing = false
+                val request = ++command
+                val name = intent.getStringExtra(EXTRA_NAME).orEmpty()
+                val options = TunOptions(
+                    intent.getStringExtra(EXTRA_APPS_MODE) ?: "off",
+                    intent.getStringArrayExtra(EXTRA_APPS)?.toList().orEmpty(),
+                    intent.getBooleanExtra(EXTRA_LAN_DIRECT, true)
+                )
                 foreground(name)
-                appsMode = intent.getStringExtra(EXTRA_APPS_MODE) ?: "off"
-                apps = intent.getStringArrayExtra(EXTRA_APPS)?.toList() ?: emptyList()
-                lanDirect = intent.getBooleanExtra(EXTRA_LAN_DIRECT, true)
-                testUrl = intent.getStringExtra(EXTRA_TEST_URL) ?: Prefs.DEFAULT_PING_URL
-                val testAfter = intent.getBooleanExtra(EXTRA_TEST_AFTER, true)
                 bg.post {
-                    if (startVpn() && testAfter) runTest(testUrl, attempts = 2)
+                    if (request != command) return@post
+                    testUrl = intent.getStringExtra(EXTRA_TEST_URL) ?: Prefs.DEFAULT_PING_URL
+                    testAfterConnect = intent.getBooleanExtra(EXTRA_TEST_AFTER, true)
+                    startVpn(request, intent.getStringExtra(EXTRA_REQUEST).orEmpty(), options)
                 }
             }
-            else -> { // перезапуск системой — обычный VPN сам не восстанавливаем
-                writeState(this, "stopped"); stopSelf()
+            ACTION_TEST -> if (!closing) {
+                val request = command
+                bg.post {
+                    if (request == command && coreConfig != null && uplink != null) {
+                        runTest(intent.getStringExtra(EXTRA_TEST_URL) ?: testUrl, attempts = 1)
+                    }
+                }
             }
+            else -> stopVpn()
         }
         return START_NOT_STICKY
     }
@@ -244,166 +240,212 @@ class XrayVpnService : VpnService() {
     }
 
     /** Новый TUN-интерфейс с текущими настройками. Пока он не закрыт, VPN не прерывается. */
-    private fun establishTun(): ParcelFileDescriptor {
+    private fun establishTun(options: TunOptions): ParcelFileDescriptor {
         val b = Builder()
             .setSession("Lite 404 VPN")
             .setMtu(XrayConfig.MTU)
             .addAddress("10.10.14.1", 30)
             .addDnsServer("1.1.1.1")
         // весь интернет, кроме локальной сети (192.168.x, 10.x, 172.16–31.x): к ней — напрямую, мимо VPN
-        if (lanDirect) for ((ip, prefix) in Lan.PUBLIC_IPV4) b.addRoute(ip, prefix) else b.addRoute("0.0.0.0", 0)
+        if (options.lanDirect) for ((ip, prefix) in Lan.PUBLIC_IPV4) b.addRoute(ip, prefix) else b.addRoute("0.0.0.0", 0)
         // IPv6 тоже заворачиваем в туннель (иначе утечка мимо VPN); ядро отвечает на него отказом сразу
         runCatching { b.addAddress("fd66:6c34:3034::1", 126); b.addRoute("::", 0) }
         // туннелирование по приложениям; своё приложение всегда мимо VPN, иначе ядро зациклится само на себя
-        if (appsMode == "include") {
+        if (options.appsMode == "include") {
             var added = 0
-            for (a in apps) if (a != packageName && runCatching { b.addAllowedApplication(a) }.isSuccess) added++
+            for (a in options.apps) if (a != packageName && runCatching { b.addAllowedApplication(a) }.isSuccess) added++
             if (added == 0) throw IllegalStateException(tr("выбранные приложения не установлены — измените список на вкладке «Приложения»"))
         } else {
             runCatching { b.addDisallowedApplication(packageName) }
-            if (appsMode == "exclude") for (a in apps) if (a != packageName) runCatching { b.addDisallowedApplication(a) }
+            if (options.appsMode == "exclude") for (a in options.apps) if (a != packageName) runCatching { b.addDisallowedApplication(a) }
         }
         if (Build.VERSION.SDK_INT >= 29) b.setMetered(false)
-        currentNetwork?.let { b.setUnderlyingNetworks(arrayOf(it)) }
+        b.setUnderlyingNetworks(uplink?.let { arrayOf(it.network) } ?: emptyArray())
         return b.establish() ?: throw IllegalStateException(tr("нет разрешения на VPN"))
     }
 
-    /** Основная сеть телефона → ядру (имя и номер интерфейса): по ней оно понимает, что сеть сменилась. */
-    private fun reportNetwork(network: Network?) {
-        val name = network?.let { connectivity?.getLinkProperties(it)?.interfaceName }
-        val index = name?.let { runCatching { NetworkInterface.getByName(it)?.index }.getOrNull() } ?: -1
-        runCatching { Vpncore.setDefaultInterface(name ?: "", if (name == null) -1 else index) }
-    }
-
-    /** Запуск. true — туннель поднят. */
-    private fun startVpn(): Boolean = synchronized(lock) {
-        if (stopped) return false
+    private fun startVpn(commandId: Long, request: String, options: TunOptions) {
         try {
-            stopping = true
-            cleanup()
-            stopping = false
+            val configRecord = configFile(this).readText()
+            if (configRecord.substringBefore('\n') != request) return
+            clearTest()
+            writeState(this, "connecting", request)
             XrayCore.initEnv(this)
-            // подробный журнал ядра — только для диагностики: если в Android/data/<пакет>/files есть файл core.debug,
-            // журнал пишется туда же в core.log (виден через adb и файловый менеджер); иначе журнала нет
             val ext = getExternalFilesDir(null)
-            val log = if (ext != null && File(ext, "core.debug").exists()) File(ext, "core.log").apply { delete() }.absolutePath else ""
-            val config = Vpncore.convert(configFile(this).readText(), XrayCore.geoDir(this).absolutePath, TUN_ADDRESSES, log, if (log != "") "debug" else "")
+            val log = if (ext != null && File(ext, "core.debug").exists()) {
+                File(ext, "core.log").apply { delete() }.absolutePath
+            } else ""
+            val config = Vpncore.convert(
+                configRecord.substringAfter('\n'), XrayCore.geoDir(this).absolutePath, TUN_ADDRESSES,
+                log, if (log.isNotEmpty()) "debug" else ""
+            )
+            if (commandId != command) return
             watchNetwork()
-            val fd = establishTun()
-            tun = fd
-            reportNetwork(currentNetwork) // ядро узнаёт основную сеть ещё до запуска
+            val fd = tun?.takeIf { tunOptions == options } ?: establishTun(options).also { next ->
+                val previous = tun
+                tun = next
+                tunOptions = options
+                runCatching { previous?.close() }
+            }
             Vpncore.start(config, fd.fd, platform)
             coreConfig = config
-            reportNetwork(currentNetwork)
-            if (stopped) return false
-            writeState(this, "running")
-            true
-        } catch (e: Throwable) {
-            Log.e(TAG, "start failed", e)
-            writeState(this, "error:" + (e.message ?: e.javaClass.simpleName))
+            activeRequest = request
+            activeCommand = commandId
+            needsRecovery = uplink == null
+            if (commandId != command) return
+            writeState(this, "running", request)
+            Log.i(TAG, "VPN started")
+            if (testAfterConnect && uplink != null) runTest(testUrl, attempts = 2)
+        } catch (e: Exception) {
+            Log.e(TAG, "VPN start failed", e)
             cleanup()
-            main.post { stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
+            if (commandId == command) {
+                writeState(this, "error:" + (e.message ?: e.javaClass.simpleName), request)
+                finish(commandId)
+            }
+        }
+    }
+
+    private fun runTest(url: String, attempts: Int) {
+        testJob?.cancel()
+        writeTest(this, "testing")
+        testJob = tests.launch {
+            var last = tr("нет ответа")
+            repeat(attempts) { attempt ->
+                val result = withContext(Dispatchers.IO) { runCatching { Vpncore.urlTest(url, 8_000) } }
+                val ms = result.getOrDefault(-1L)
+                if (ms >= 0) {
+                    writeTest(this@XrayVpnService, "ok:$ms")
+                    return@launch
+                }
+                result.exceptionOrNull()?.let { last = it.message?.substringAfterLast(": ")?.take(80) ?: it.javaClass.simpleName }
+                if (attempt + 1 < attempts) delay(1000)
+            }
+            writeTest(this@XrayVpnService, "fail:$last")
+        }
+    }
+
+    private fun clearTest() {
+        testJob?.cancel()
+        testJob = null
+        writeTest(this, "")
+    }
+
+    private fun watchNetwork() {
+        if (networkCallback != null) return
+        val cm = connectivity
+        val initial = cm.activeNetwork?.takeIf {
+            cm.getNetworkCapabilities(it)?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN) == true
+        }
+        initial?.let { updateUplink(it, cm.getLinkProperties(it)) }
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            private var pending: Network? = null
+            override fun onAvailable(network: Network) {
+                pending = network
+            }
+
+            override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) {
+                if (networkCallback === this && network == pending) updateUplink(network, properties)
+            }
+
+            override fun onLost(network: Network) {
+                if (networkCallback !== this) return
+                if (network == pending) pending = null
+                if (network == uplink?.network) setUplink(null)
+            }
+        }
+        cm.watchUnderlyingNetwork(callback, bg)
+        networkCallback = callback
+    }
+
+    private fun updateUplink(network: Network, properties: LinkProperties?) {
+        val name = properties?.interfaceName ?: return
+        val index = runCatching { NetworkInterface.getByName(name)?.index }.getOrNull() ?: return
+        if (index >= 0) setUplink(Uplink(network, name, index))
+    }
+
+    private fun setUplink(next: Uplink?) {
+        val previous = uplink
+        if (previous == next) return
+        uplink = next
+        if (tun != null) setUnderlyingNetworks(next?.let { arrayOf(it.network) } ?: emptyArray())
+        // Новый Android Network может получить то же имя интерфейса. Сообщаем ядру о разрыве и в этом случае.
+        if (previous != null && next != null && previous.name == next.name && previous.index == next.index) {
+            Vpncore.setDefaultInterface("", -1)
+        }
+        Vpncore.setDefaultInterface(next?.name.orEmpty(), next?.index ?: -1)
+        Log.i(TAG, "Uplink: ${next?.name ?: "offline"}")
+        val config = coreConfig ?: return
+        if (activeCommand != command) return
+        clearTest()
+        if (next == null) {
+            needsRecovery = true
+            return
+        }
+        if (needsRecovery && !recoverCore(config)) return
+        if (testAfterConnect) runTest(testUrl, attempts = 2)
+    }
+
+    private fun recoverCore(config: String): Boolean {
+        val fd = tun ?: return false
+        needsRecovery = false
+        return try {
+            // После полного обрыва ядро может оставить старое состояние сети. TUN остаётся в Android.
+            Vpncore.start(config, fd.fd, platform)
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "VPN recovery failed", e)
+            cleanup()
+            if (activeCommand == command) {
+                writeState(this, "error:" + (e.message ?: e.javaClass.simpleName), activeRequest)
+                finish(activeCommand)
+            }
             false
         }
     }
 
-    /** Пересборка при смене сети: новый TUN → новое ядро → закрыть старое. Старые соединения рвутся сразу. */
-    private fun rebuildForNetwork() {
-        synchronized(lock) {
-            val config = coreConfig
-            if (stopped || config == null) return
-            val oldTun = tun
-            var newTun: ParcelFileDescriptor? = null
-            try {
-                newTun = establishTun()
-                tun = newTun
-                Vpncore.start(config, newTun.fd, platform)   // старое ядро останавливается внутри
-                reportNetwork(currentNetwork)
-                runCatching { oldTun?.close() }
-                Log.d(TAG, "туннель пересобран под новую сеть")
-            } catch (e: Throwable) {
-                if (tun !== newTun) runCatching { newTun?.close() }
-                if (tun !== oldTun) runCatching { oldTun?.close() }
-                Log.e(TAG, "пересборка не удалась — полный перезапуск", e)
-                CrashLog.save(e, "VPN: пересборка при смене сети (без вылета)")
-                startVpn()
-            }
-        }
-    }
-
-    /** Проверка: запрос [url] через туннель. Пишет ok:<мс> или fail:<текст> в xray_test. */
-    private fun runTest(url: String, attempts: Int) {
-        writeTest(this, "testing")
-        var last = ""
-        repeat(attempts) { n ->
-            if (synchronized(lock) { coreConfig } == null) { writeTest(this, "fail:" + tr("туннель не работает")); return }
-            try {
-                val ms = Vpncore.urlTest(url, 10_000)
-                if (ms > 0) { writeTest(this, "ok:$ms"); return }
-                last = tr("нет ответа")
-            } catch (e: Exception) {
-                last = e.message?.substringAfterLast(": ")?.take(80) ?: e.javaClass.simpleName
-            }
-            if (n < attempts - 1) Thread.sleep(1500)
-        }
-        writeTest(this, "fail:$last")
-    }
-
-    private fun isVpnNetwork(network: Network): Boolean =
-        connectivity?.getNetworkCapabilities(network)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
-
-    private fun watchNetwork() {
-        if (connectivity != null) return
-        val cm = getSystemService(ConnectivityManager::class.java)
-        connectivity = cm
-        // приложение исключено из VPN, поэтому «сеть по умолчанию» для него — настоящая (Wi-Fi / мобильная)
-        currentNetwork = cm.activeNetwork?.takeIf {
-            cm.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == false
-        }
-        lastNetwork = currentNetwork
-        runCatching { cm.registerDefaultNetworkCallback(networkCallback, bg) }
-            .onFailure { Log.w(TAG, "не удалось следить за сетью", it) }
-    }
-
-    private fun unwatchNetwork() {
-        connectivity?.let { runCatching { it.unregisterNetworkCallback(networkCallback) } }
-        connectivity = null
-        bg.removeCallbacks(rebuildTask)
-        bg.removeCallbacks(lossTask)
-    }
-
     private fun cleanup() {
-        if (coreConfig != null) runCatching { Vpncore.stop() }
-        coreConfig = null
+        clearTest()
+        networkCallback?.let { runCatching { connectivity.unregisterNetworkCallback(it) } }
+        networkCallback = null
+        val hadUplink = uplink != null
+        uplink = null
         runCatching { tun?.close() }
         tun = null
+        tunOptions = null
+        if (coreConfig != null) runCatching { Vpncore.stop() }
+        coreConfig = null
+        needsRecovery = false
+        if (hadUplink) runCatching { Vpncore.setDefaultInterface("", -1) }
     }
 
-    /** Остановка один раз, ядро гасится в фоне под тем же замком, что и запуск. */
     private fun stopVpn() {
-        if (stopped) return
-        stopped = true
-        stopping = true
+        if (closing) return
+        closing = true
+        val request = ++command
         bg.post {
-            unwatchNetwork()
-            synchronized(lock) { runCatching { cleanup() } }
+            cleanup()
+            if (request != command) return@post
             writeState(this, "stopped")
-            writeTest(this, "")
-            main.post { stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
+            finish(request)
         }
     }
 
-    override fun onRevoke() { stopVpn() }
+    private fun finish(request: Long) {
+        main.post {
+            if (request != command) return@post
+            closing = true
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelfResult(lastStartId)
+        }
+    }
+
+    override fun onRevoke() { main.post { stopVpn() } }
 
     override fun onDestroy() {
-        unwatchNetwork()
-        if (!stopping) { stopping = true; runCatching { synchronized(lock) { cleanup() } } }
-        writeState(this, "stopped")
-        worker.quitSafely()
+        ++command
+        tests.cancel()
+        bg.post { cleanup() }
         super.onDestroy()
-        // процесс «:xray» нужен только ядру — завершаем его целиком, чтобы ядро и VPN точно освободились.
-        // Но только если за это время не запустили службу заново (иначе убьём новый запуск → вылет).
-        val mine = instance
-        main.postDelayed({ if (instances == mine) android.os.Process.killProcess(android.os.Process.myPid()) }, 300)
     }
 }

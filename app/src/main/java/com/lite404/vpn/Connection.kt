@@ -1,6 +1,7 @@
 package com.lite404.vpn
 
 import android.content.Context
+import android.os.SystemClock
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -74,28 +75,31 @@ object Connection {
         val user = prefs.userLists()
         val usable = profile?.takeIf { Routing.ensureGeo(app, it) }
         if (profile != null && usable == null) notice(tr("Не удалось скачать правила маршрутизации — сейчас всё идёт через VPN"))
+        if (abort) return@run
         // готовым спискам нужны geo-файлы профиля сервера, даже если умная маршрутизация выключена
-        val geo = usable != null || (user.needsGeo() && (profile ?: geoSource)?.let { Routing.ensureGeo(app, it) } == true)
+        val geo = usable != null || (profile == null && user.needsGeo() && geoSource?.let { Routing.ensureGeo(app, it) } == true)
+        if (abort) return@run
         if (user.needsGeo() && !geo) notice(tr("Готовые списки недоступны — правила не скачались или не настроены на сервере"))
         val config = XrayConfig.build(server.config, usable, prefs.lanDirectXray, user, geo)
         if (WdttController.active()) {
             WdttController.stopAndWait(app)
-            delay(600)   // система освобождает VPN-интерфейс WireGuard
         }
+        if (abort) return@run
         Prefs(app).desiredMode = "xray"
-        XrayVpnService.start(app, config, server.name)
-        waitUntil(25_000) { XrayVpnService.state(app).let { it == "running" || it.startsWith("error:") } }
+        val request = XrayVpnService.start(app, config, server.name)
+        if (!waitUntil(25_000) { XrayVpnService.startFinished(app, request) } && !abort) {
+            Prefs(app).desiredMode = ""
+            XrayVpnService.stopAndWait(app)
+            error(tr("Не удалось подключиться к VPN"))
+        }
     }
 
     fun connectWdtt(ctx: Context, server: WdttServer, vkHash: String) = run(ctx, ConnState(VpnMode.WDTT, Phase.CONNECTING)) { app ->
-        if (XrayVpnService.state(app).let { it == "running" || it == "connecting" }) {
-            XrayVpnService.stopAndWait(app)
-            delay(600)   // процесс «:xray» завершается и отдаёт VPN
-        }
+        XrayVpnService.stopAndWait(app)
         if (WdttController.active()) {
             WdttController.stopAndWait(app)   // смена страны: сначала гасим текущий туннель WDTT
-            delay(400)
         }
+        if (abort) return@run
         wdttTestedSession = false
         Prefs(app).desiredMode = "wdtt"   // после остановки старого туннеля: его остановка сбрасывает режим
         WdttController.start(app, server, vkHash)
@@ -126,9 +130,10 @@ object Connection {
         attach(app)
         if (ops.isLocked) {
             // идёт операция: повторное «подключить» игнорируем (двойное нажатие), а «стоп» встаёт в очередь
-            if (shown.phase != Phase.STOPPING) return
+            if (shown.phase != Phase.STOPPING || pending?.phase == Phase.STOPPING) return
             abort = true
         }
+        wdttTestJob?.cancel()
         pending = shown
         _state.value = shown
         scope.launch {
@@ -146,14 +151,18 @@ object Connection {
         }
     }
 
-    private suspend fun waitUntil(timeoutMs: Long, done: () -> Boolean) {
-        val end = System.currentTimeMillis() + timeoutMs
-        while (!abort && !done() && System.currentTimeMillis() < end) delay(150)
+    private suspend fun waitUntil(timeoutMs: Long, done: () -> Boolean): Boolean {
+        val end = SystemClock.elapsedRealtime() + timeoutMs
+        while (!abort && SystemClock.elapsedRealtime() < end) {
+            if (done()) return true
+            delay(150)
+        }
+        return !abort && done()
     }
 
     /** Фактическое состояние — из служб. Во время операции показываем то, что пользователь запросил. */
     private fun refresh(app: Context) {
-        pending?.let { _state.value = it.copy(test = _state.value.test); return }
+        pending?.let { _state.value = it; return }
         val xray = XrayVpnService.state(app)
         val wdttRunning = TunnelManager.running.value
         val wdttStarting = TunnelManager.starting.value
