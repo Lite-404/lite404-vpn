@@ -297,13 +297,22 @@ func (c *converter) stream(ss obj, out obj) error {
 		if str(r, "mldsa65Verify") != "" {
 			c.warn = append(c.warn, "mldsa65Verify пропущен")
 		}
+		fp := fingerprint(str(r, "fingerprint"))
+		// The legacy QQ preset has no hybrid key share accepted by current Xray REALITY servers.
+		if fp == "qq" {
+			fp = "chrome"
+		}
+		reality := obj{"enabled": true, "public_key": str(r, "publicKey"), "short_id": str(r, "shortId")}
+		// Xray >= 26.9.8 requires a hybrid TLS key share. Keep it in the browser presets that provide it.
+		switch fp {
+		case "chrome", "chrome_psk", "chrome_psk_shuffle", "chrome_padding_psk_shuffle", "chrome_pq", "chrome_pq_psk", "firefox", "safari":
+			reality["support_x25519mlkem768"] = true
+		}
 		tls = obj{
 			"enabled":     true,
 			"server_name": str(r, "serverName"),
-			// отпечаток — как в подписке (на нодах Xray 26.7.28; Xray ≥ 26.9.9 требует X25519MLKEM768,
-			// а у firefox в uTLS sing-box-extended его нет — при обновлении Xray на нодах это учесть)
-			"utls":    obj{"enabled": true, "fingerprint": fingerprint(str(r, "fingerprint"))},
-			"reality": obj{"enabled": true, "public_key": str(r, "publicKey"), "short_id": str(r, "shortId")},
+			"utls":        obj{"enabled": true, "fingerprint": fp},
+			"reality":     reality,
 		}
 	default:
 		return fmt.Errorf("защита %q не поддерживается", security)

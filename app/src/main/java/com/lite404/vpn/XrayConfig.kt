@@ -5,7 +5,8 @@ import org.json.JSONObject
 
 /** Конфиг сервера из JSON-подписки 3X-UI → конфиг для Xray на телефоне: вход TUN вместо socks/http. */
 object XrayConfig {
-    const val MTU = 1500
+    // MTU локального TUN. Ядро открывает внешние соединения через отдельные сокеты.
+    const val MTU = 9000
 
     /**
      * [profile] — профиль умной маршрутизации (null — всё через VPN). Его geo-файлы

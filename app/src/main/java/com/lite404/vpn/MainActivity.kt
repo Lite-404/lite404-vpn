@@ -24,12 +24,15 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -52,6 +55,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
@@ -201,6 +205,7 @@ private fun Root() {
         if (model.token != null) model.refresh()
     }
     var tab by rememberSaveable { mutableStateOf(Tab.VPN) }
+    var showUpdates by rememberSaveable { mutableStateOf(false) }
     Box(Modifier.fillMaxSize()) {
     Scaffold(
         containerColor = Bg,
@@ -208,7 +213,7 @@ private fun Root() {
             if (model.token != null) NavigationBar(containerColor = Card) {
                 Tab.entries.forEach { t ->
                     NavigationBarItem(
-                        selected = tab == t, onClick = { tab = t },
+                        selected = tab == t, onClick = { showUpdates = false; tab = t },
                         icon = { Icon(t.icon, null) },
                         label = {
                             Text(tr(t.title), fontSize = 11.sp, maxLines = 1, softWrap = false, textAlign = TextAlign.Center)
@@ -220,7 +225,11 @@ private fun Root() {
         }
     ) { pad ->
         Box(Modifier.fillMaxSize().padding(pad)) {
-            if (model.token == null) TokenScreen(model) else MainScreen(model, tab)
+            if (model.token == null) TokenScreen(model) else MainScreen(model, tab, showUpdates) {
+                showUpdates = true
+                tab = Tab.SETTINGS
+                Updater.check()
+            }
         }
     }
     TopToastHost(model, Modifier.align(Alignment.TopCenter))
@@ -315,7 +324,7 @@ private class LiveState {
 }
 
 @Composable
-private fun MainScreen(model: AppModel, tab: Tab) {
+private fun MainScreen(model: AppModel, tab: Tab, showUpdates: Boolean, onCheckUpdates: () -> Unit) {
     val ctx = LocalContext.current
     val live = remember { LiveState() }
     LaunchedEffect(Unit) { Connection.attach(ctx) }
@@ -350,10 +359,10 @@ private fun MainScreen(model: AppModel, tab: Tab) {
     LaunchedEffect(wdttRunning) { live.wdtt = wdttRunning }
 
     when (tab) {
-        Tab.VPN -> VpnTab(model, live)
+        Tab.VPN -> VpnTab(model, live, onCheckUpdates)
         Tab.WDTT -> WdttTab(model, live)
         Tab.APPS -> AppsTab(model, live)
-        Tab.SETTINGS -> SettingsTab(model)
+        Tab.SETTINGS -> SettingsTab(model, showUpdates)
     }
 }
 
@@ -441,7 +450,7 @@ private fun <T> Picker(label: String, items: List<T>, selected: Int, name: (T) -
 private fun ConnState.canSelectServer() = phase == Phase.OFF || phase == Phase.ON
 
 @Composable
-private fun VpnTab(model: AppModel, live: LiveState) {
+private fun VpnTab(model: AppModel, live: LiveState, onCheckUpdates: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val cfg = model.config
@@ -498,7 +507,7 @@ private fun VpnTab(model: AppModel, live: LiveState) {
             }
         }
         Spacer(Modifier.height(10.dp))
-        StatusLine(conn, VpnMode.XRAY)
+        StatusLine(conn, VpnMode.XRAY, onCheckUpdates)
         Spacer(Modifier.height(18.dp))
         // трафик слева, обновление подписки — иконкой справа
         Row(
@@ -541,11 +550,45 @@ private fun VpnTab(model: AppModel, live: LiveState) {
 
 /** Строка под кнопкой: ошибка, «другой режим включён» или результат проверки соединения. */
 @Composable
-private fun StatusLine(conn: ConnState, tabMode: VpnMode) {
+private fun StatusLine(conn: ConnState, tabMode: VpnMode, onCheckUpdates: (() -> Unit)? = null) {
     val ctx = LocalContext.current
+    val error = conn.error?.takeIf { conn.phase == Phase.OFF && conn.errorMode == tabMode }
+    val failedTest = conn.test?.takeIf { conn.phase == Phase.ON && conn.mode == tabMode && !it.ok && !it.running }
+    if (error != null || failedTest != null) {
+        val message = error?.let { tr("Ошибка: ") + it } ?: failedTest?.text.orEmpty()
+        var showDetails by remember(message) { mutableStateOf(false) }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    message,
+                    modifier = Modifier.weight(1f, fill = false)
+                        .clickable { showDetails = true }.padding(vertical = 6.dp),
+                    maxLines = 1, overflow = TextOverflow.Ellipsis, color = Danger, fontSize = 13.sp
+                )
+                if (failedTest != null) {
+                    TextButton(onClick = { Connection.test(ctx) }) { Text(tr("Проверить"), fontSize = 13.sp) }
+                }
+            }
+            if (onCheckUpdates != null) {
+                Text(
+                    tr("Настройки") + " → " + tr("Проверить обновления"),
+                    modifier = Modifier.clickable(onClick = onCheckUpdates).padding(vertical = 6.dp),
+                    color = Accent, fontSize = 13.sp, textAlign = TextAlign.Center
+                )
+            }
+        }
+        if (showDetails) {
+            AlertDialog(
+                onDismissRequest = { showDetails = false },
+                text = {
+                    Column(Modifier.heightIn(max = 280.dp).verticalScroll(rememberScrollState())) { Text(message) }
+                },
+                confirmButton = { TextButton(onClick = { showDetails = false }) { Text(tr("Закрыть")) } }
+            )
+        }
+        return
+    }
     when {
-        conn.mode == null && conn.error != null && conn.phase == Phase.OFF ->
-            Text(tr("Ошибка: ") + conn.error, color = Danger, fontSize = 13.sp, textAlign = TextAlign.Center)
         conn.mode != null && conn.mode != tabMode && conn.phase != Phase.OFF ->
             Text(
                 if (tabMode == VpnMode.XRAY) tr("Сейчас включён резервный VPN. Нажмите кнопку — переключимся на обычный")
@@ -802,7 +845,8 @@ private fun AppIcon(pkg: String) {
 }
 
 @Composable
-private fun SettingsTab(model: AppModel) {
+@OptIn(ExperimentalFoundationApi::class)
+private fun SettingsTab(model: AppModel, showUpdates: Boolean) {
     val ctx = LocalContext.current
     var showLogs by remember { mutableStateOf(false) }
     var confirmLogout by remember { mutableStateOf(false) }
@@ -817,6 +861,11 @@ private fun SettingsTab(model: AppModel) {
     if (showLogs) { LogsScreen { showLogs = false }; return }
     if (showLists) { ListsScreen(model) { showLists = false }; return }
 
+    val updates = remember { BringIntoViewRequester() }
+    var updatesPlaced by remember { mutableStateOf(false) }
+    LaunchedEffect(showUpdates, updatesPlaced) {
+        if (showUpdates && updatesPlaced) updates.bringIntoView()
+    }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
         Header(tr("Настройки"))
         Spacer(Modifier.height(16.dp))
@@ -949,7 +998,9 @@ private fun SettingsTab(model: AppModel) {
         }
         Section(tr("О приложении")) {
             InfoLine(tr("Версия"), BuildConfig.VERSION_NAME)
-            UpdateBlock(model)
+            Column(Modifier.bringIntoViewRequester(updates).onGloballyPositioned { updatesPlaced = true }) {
+                UpdateBlock(model)
+            }
             InfoLine(tr("Ядро"), xrayVersion)
             InfoLine(tr("Лицензия"), "GPLv3")
             Text(tr("Основано на WDTT (amurcanov/proxy-turn-vk-android) и sing-box-extended."), color = Muted, fontSize = 13.sp)

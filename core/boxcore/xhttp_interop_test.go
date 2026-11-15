@@ -38,9 +38,12 @@ func TestXrayInterop(t *testing.T) {
 	}
 
 	// цель запросов — внешняя: выход Xray (freedom) на localhost не ходит
-	const target = "http://www.gstatic.com/generate_204"
-	// «маска» Reality — настоящий сайт с TLS 1.3 (с локальным тестовым сертификатом Xray авторизацию не проходит)
-	const mask = "www.microsoft.com"
+	const target = "https://www.gstatic.com/generate_204"
+	// Подходящая цель TLS 1.3 может зависеть от версии REALITY на сервере.
+	mask := os.Getenv("LITE404_REALITY_TARGET")
+	if mask == "" {
+		mask = "www.google.com"
+	}
 
 	freePort := func() int {
 		l, _ := net.Listen("tcp", "127.0.0.1:0")
@@ -81,7 +84,7 @@ func TestXrayInterop(t *testing.T) {
 			if c.vision {
 				flow = "xtls-rprx-vision"
 			}
-			server := fmt.Sprintf(`{"log":{"loglevel":"warning"},
+			server := fmt.Sprintf(`{"log":{"loglevel":"info"},
 			 "inbounds":[{"listen":"127.0.0.1","port":%d,"protocol":"vless","settings":{"clients":[{"id":%q,"flow":%q}],"decryption":"none"},
 			  "streamSettings":{%s}}],
 			 "outbounds":[{"protocol":"freedom"}]}`, port, uuid, flow, stream)

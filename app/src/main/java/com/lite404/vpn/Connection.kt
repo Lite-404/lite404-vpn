@@ -26,6 +26,7 @@ data class ConnState(
     val phase: Phase = Phase.OFF,
     val error: String? = null,
     val test: LinkTest? = null,
+    val errorMode: VpnMode? = null,
 )
 
 /**
@@ -142,7 +143,7 @@ object Connection {
                     block(app)
                 } catch (e: Exception) {
                     CrashLog.save(e, "Connection: ошибка операции (без вылета)")
-                    _state.value = ConnState(error = e.message ?: e.javaClass.simpleName)
+                    _state.value = ConnState(error = e.message ?: e.javaClass.simpleName, errorMode = shown.mode)
                 } finally {
                     if (pending === shown) pending = null
                     refresh(app)
@@ -181,11 +182,14 @@ object Connection {
             wdttRunning && workers > 0 -> ConnState(VpnMode.WDTT, Phase.ON, test = prev.test.takeIf { prev.mode == VpnMode.WDTT })
             wdttBlip -> prev
             wdttRunning || wdttStarting || TunnelManager.paused.value -> ConnState(VpnMode.WDTT, Phase.CONNECTING, test = prev.test.takeIf { prev.mode == VpnMode.WDTT })
-            xray.startsWith("error:") -> ConnState(error = xray.removePrefix("error:"))
+            xray.startsWith("error:") -> ConnState(error = xray.removePrefix("error:"), errorMode = VpnMode.XRAY)
             // WDTT сам остановился (не по кнопке) — показываем причину из журнала туннеля
             prev.mode == VpnMode.WDTT && prev.phase != Phase.OFF && prev.phase != Phase.STOPPING ->
-                ConnState(error = lastWdttError() ?: tr("Резервный VPN остановился. Подробности — в журнале (Настройки)"))
-            else -> ConnState(error = prev.error.takeIf { prev.phase == Phase.OFF })
+                ConnState(
+                    error = lastWdttError() ?: tr("Резервный VPN остановился. Подробности — в журнале (Настройки)"),
+                    errorMode = VpnMode.WDTT
+                )
+            else -> if (prev.phase == Phase.OFF) prev else ConnState()
         }
         _state.value = next
         if (next.mode == VpnMode.WDTT && next.phase == Phase.ON && !wdttTestedSession && Prefs(app).testAfterConnect) {
