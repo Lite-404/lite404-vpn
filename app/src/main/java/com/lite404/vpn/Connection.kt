@@ -2,6 +2,7 @@ package com.lite404.vpn
 
 import android.content.Context
 import android.os.SystemClock
+import android.net.VpnService
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -19,7 +20,7 @@ enum class VpnMode { XRAY, WDTT }
 enum class Phase { OFF, CONNECTING, ON, STOPPING }
 
 /** Результат проверки соединения через туннель. */
-data class LinkTest(val ok: Boolean, val text: String, val running: Boolean = false)
+data class LinkTest(val ok: Boolean, val text: String, val running: Boolean = false, val latencyMs: Long? = null)
 
 data class ConnState(
     val mode: VpnMode? = null,
@@ -70,15 +71,19 @@ object Connection {
      * [profile] — маршрутизация «как в Happ/INCY» (null — всё через VPN). Её geo-файлы качаются здесь же;
      * не скачались и в кэше пусто — подключаемся без неё и сообщаем через [notice].
      */
-    fun connectXray(ctx: Context, server: XrayServer, profile: JSONObject?, geoSource: JSONObject? = profile, notice: (String) -> Unit = {}) =
+    fun connectXray(
+        ctx: Context, server: XrayServer, profile: JSONObject?, geoSource: JSONObject? = profile,
+        cachedGeoOnly: Boolean = false, notice: (String) -> Unit = {}
+    ) =
         run(ctx, ConnState(VpnMode.XRAY, Phase.CONNECTING)) { app ->
         val prefs = Prefs(app)
         val user = prefs.userLists()
-        val usable = profile?.takeIf { Routing.ensureGeo(app, it) }
+        val usable = profile?.takeIf { if (cachedGeoOnly) Routing.hasGeo(app) else Routing.ensureGeo(app, it) }
         if (profile != null && usable == null) notice(tr("Не удалось скачать правила маршрутизации — сейчас всё идёт через VPN"))
         if (abort) return@run
         // готовым спискам нужны geo-файлы профиля сервера, даже если умная маршрутизация выключена
-        val geo = usable != null || (profile == null && user.needsGeo() && geoSource?.let { Routing.ensureGeo(app, it) } == true)
+        val geo = usable != null || (profile == null && user.needsGeo() &&
+            geoSource?.let { if (cachedGeoOnly) Routing.hasGeo(app) else Routing.ensureGeo(app, it) } == true)
         if (abort) return@run
         if (user.needsGeo() && !geo) notice(tr("Готовые списки недоступны — правила не скачались или не настроены на сервере"))
         val config = XrayConfig.build(server.config, usable, prefs.lanDirectXray, user, geo)
@@ -86,7 +91,8 @@ object Connection {
             WdttController.stopAndWait(app)
         }
         if (abort) return@run
-        Prefs(app).desiredMode = "xray"
+        prefs.lastVpn = VpnMode.XRAY
+        prefs.desiredMode = "xray"
         val request = XrayVpnService.start(app, config, server.name)
         if (!waitUntil(25_000) { XrayVpnService.startFinished(app, request) } && !abort) {
             Prefs(app).desiredMode = ""
@@ -95,14 +101,18 @@ object Connection {
         }
     }
 
-    fun connectWdtt(ctx: Context, server: WdttServer, vkHash: String) = run(ctx, ConnState(VpnMode.WDTT, Phase.CONNECTING)) { app ->
-        XrayVpnService.stopAndWait(app)
+    fun connectWdtt(ctx: Context, server: WdttServer, vkHash: String, cachedGeoOnly: Boolean = false) = run(ctx, ConnState(VpnMode.WDTT, Phase.CONNECTING)) { app ->
         if (WdttController.active()) {
             WdttController.stopAndWait(app)   // смена страны: сначала гасим текущий туннель WDTT
         }
+        XrayVpnService.stopAndWait(app)
+        if (abort) return@run
+        WdttRouter.prepare(app, cachedOnly = cachedGeoOnly)
         if (abort) return@run
         wdttTestedSession = false
-        Prefs(app).desiredMode = "wdtt"   // после остановки старого туннеля: его остановка сбрасывает режим
+        val prefs = Prefs(app)
+        prefs.lastVpn = VpnMode.WDTT
+        prefs.desiredMode = "wdtt"   // после остановки старого туннеля: его остановка сбрасывает режим
         WdttController.start(app, server, vkHash)
         waitUntil(10_000) { TunnelManager.running.value }
     }
@@ -114,30 +124,51 @@ object Connection {
         WdttController.stopAndWait(app)
     }
 
+    fun autoConnect(ctx: Context, boot: Boolean): Job? {
+        val prefs = Prefs(ctx)
+        if (!(if (boot) prefs.connectOnBoot else prefs.connectOnOpen) ||
+            prefs.token.isBlank() || pending != null || WdttController.active() ||
+            XrayVpnService.state(ctx) in listOf("running", "connecting") || VpnService.prepare(ctx) != null
+        ) return null
+        val config = runCatching { AppConfig.parse(prefs.configJson, prefs.configAt) }.getOrNull() ?: return null
+        if (config.error != null) return null
+        if (prefs.lastVpn == VpnMode.WDTT && config.vkHash.isNotBlank() && config.wdtt.isNotEmpty()) {
+            return connectWdtt(ctx, config.wdtt[prefs.wdttIndex.coerceIn(config.wdtt.indices)], config.vkHash, cachedGeoOnly = boot)
+        }
+        if (config.xray.isEmpty()) return null
+        return connectXray(
+            ctx, config.xray[prefs.xrayIndex.coerceIn(config.xray.indices)],
+            Routing.profile(config, prefs.routingMode), Routing.profile(config, Routing.MODE_SMART), cachedGeoOnly = boot
+        )
+    }
+
     /** Проверить, что интернет через туннель работает. */
     fun test(ctx: Context) {
         val app = ctx.applicationContext
+        if (_state.value.phase == Phase.ON) {
+            _state.value = _state.value.copy(test = LinkTest(false, tr("Проверяем соединение…"), running = true))
+        }
         when (_state.value.mode.takeIf { _state.value.phase == Phase.ON }) {
             VpnMode.XRAY -> XrayVpnService.test(app)
-            VpnMode.WDTT -> testWdtt(app)
+            VpnMode.WDTT -> if (WdttRouter.up(app)) XrayVpnService.test(app) else testWdtt(app)
             null -> Unit
         }
     }
 
     // ── внутреннее ──
 
-    private fun run(ctx: Context, shown: ConnState, block: suspend (Context) -> Unit) {
+    private fun run(ctx: Context, shown: ConnState, block: suspend (Context) -> Unit): Job? {
         val app = ctx.applicationContext
         attach(app)
         if (ops.isLocked) {
             // идёт операция: повторное «подключить» игнорируем (двойное нажатие), а «стоп» встаёт в очередь
-            if (shown.phase != Phase.STOPPING || pending?.phase == Phase.STOPPING) return
+            if (shown.phase != Phase.STOPPING || pending?.phase == Phase.STOPPING) return null
             abort = true
         }
         wdttTestJob?.cancel()
         pending = shown
         _state.value = shown
-        scope.launch {
+        return scope.launch {
             ops.withLock {
                 try {
                     block(app)
@@ -165,6 +196,8 @@ object Connection {
     private fun refresh(app: Context) {
         pending?.let { _state.value = it; return }
         val xray = XrayVpnService.state(app)
+        val routed = XrayVpnService.mode(app) == VpnMode.WDTT &&
+            (WdttRouter.enabled || xray == "running" || xray == "connecting")
         val wdttRunning = TunnelManager.running.value
         val wdttStarting = TunnelManager.starting.value
         val workers = TunnelManager.activeWorkers.value
@@ -177,22 +210,23 @@ object Connection {
         val wdttBlip = prev.mode == VpnMode.WDTT && prev.phase == Phase.ON &&
             wdttZeroSince != 0L && now - wdttZeroSince < WDTT_FLAP_MS
         val next = when {
-            xray == "running" -> ConnState(VpnMode.XRAY, Phase.ON, test = xrayTest(app))
-            xray == "connecting" -> ConnState(VpnMode.XRAY, Phase.CONNECTING)
-            wdttRunning && workers > 0 -> ConnState(VpnMode.WDTT, Phase.ON, test = prev.test.takeIf { prev.mode == VpnMode.WDTT })
+            !routed && xray == "running" -> ConnState(VpnMode.XRAY, Phase.ON, test = xrayTest(app))
+            !routed && xray == "connecting" -> ConnState(VpnMode.XRAY, Phase.CONNECTING)
+            wdttRunning && workers > 0 && TunnelManager.wireGuardReady.value ->
+                ConnState(VpnMode.WDTT, Phase.ON, test = if (routed) xrayTest(app) else prev.test.takeIf { prev.mode == VpnMode.WDTT })
             wdttBlip -> prev
             wdttRunning || wdttStarting || TunnelManager.paused.value -> ConnState(VpnMode.WDTT, Phase.CONNECTING, test = prev.test.takeIf { prev.mode == VpnMode.WDTT })
-            xray.startsWith("error:") -> ConnState(error = xray.removePrefix("error:"), errorMode = VpnMode.XRAY)
+            xray.startsWith("error:") -> ConnState(error = xray.removePrefix("error:"), errorMode = if (routed) VpnMode.WDTT else VpnMode.XRAY)
             // WDTT сам остановился (не по кнопке) — показываем причину из журнала туннеля
             prev.mode == VpnMode.WDTT && prev.phase != Phase.OFF && prev.phase != Phase.STOPPING ->
                 ConnState(
-                    error = lastWdttError() ?: tr("Резервный VPN остановился. Подробности — в журнале (Настройки)"),
+                    error = lastWdttError() ?: tr("Резервный VPN остановился"),
                     errorMode = VpnMode.WDTT
                 )
             else -> if (prev.phase == Phase.OFF) prev else ConnState()
         }
         _state.value = next
-        if (next.mode == VpnMode.WDTT && next.phase == Phase.ON && !wdttTestedSession && Prefs(app).testAfterConnect) {
+        if (!routed && next.mode == VpnMode.WDTT && next.phase == Phase.ON && !wdttTestedSession && Prefs(app).testAfterConnect) {
             wdttTestedSession = true
             testWdtt(app, settleMs = 3000)
         }
@@ -200,14 +234,17 @@ object Connection {
     }
 
     private fun lastWdttError(): String? =
-        TunnelManager.logs.value.filter { it.isError }.minByOrNull { it.priority }?.message
+        TunnelManager.lastConnectionError()
             ?.replace(Regex("""^\[[^]]+]\s*"""), "")?.removePrefix("Ошибка: ")?.take(160)
 
     private fun xrayTest(app: Context): LinkTest? {
         val r = XrayVpnService.testResult(app)
         return when {
             r == "testing" -> LinkTest(ok = false, text = tr("Проверяем соединение…"), running = true)
-            r.startsWith("ok:") -> LinkTest(true, tr("Интернет работает · %s мс", r.removePrefix("ok:")))
+            r.startsWith("ok:") -> {
+                val ms = r.removePrefix("ok:")
+                LinkTest(true, tr("Интернет работает · %s мс", ms), latencyMs = ms.toLongOrNull())
+            }
             r.startsWith("fail:") -> LinkTest(false, tr("Сайты не открываются: %s", r.removePrefix("fail:")))
             else -> null
         }

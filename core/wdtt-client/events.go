@@ -47,6 +47,11 @@ func emitError(code, message string, fatal bool) {
 }
 
 func emitStats(s *Stats) {
+	if !eventOutputEnabled {
+		return
+	}
+	s.eventMu.Lock()
+	defer s.eventMu.Unlock()
 	emitEvent(eventStats, map[string]any{
 		"active":     s.ActiveConnections.Load(),
 		"bytes_up":   s.TotalBytesUp.Load(),

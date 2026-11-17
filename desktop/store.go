@@ -15,20 +15,33 @@ import (
 
 // Settings — всё, что хранится между запусками (в папке настроек пользователя: Lite404/settings.json).
 type Settings struct {
-	Token       string          `json:"token"`
-	Config      json.RawMessage `json:"config,omitempty"` // последний ответ сервера — чтобы работать без связи с ним
-	Server      int             `json:"server"`
-	Routing     string          `json:"routing"`      // smart | off
-	LanDirect   *bool           `json:"lan_direct"`   // локальная сеть мимо VPN (nil — по умолчанию да)
-	SystemProxy bool            `json:"system_proxy"` // включать системный прокси при подключении
-	PingURL     string          `json:"ping_url"`
-	ProxyActive bool            `json:"proxy_active"` // прокси включён нами — снять после аварийного выхода
-	Lang        string          `json:"lang"`         // язык интерфейса; пусто — как в системе
-	PingOnOpen  bool            `json:"ping_on_open"`
-	TestAfter   bool            `json:"test_after_connect"`
-	LanWdtt     bool            `json:"lan_direct_wdtt"`
-	WdttServer  int             `json:"wdtt_server"`
-	Lists       UserLists       `json:"lists"` // свои списки основного VPN
+	NetworkMode    string          `json:"network_mode"`
+	Token          string          `json:"token"`
+	Config         json.RawMessage `json:"config,omitempty"` // последний ответ сервера — чтобы работать без связи с ним
+	Server         int             `json:"server"`
+	Routing        string          `json:"routing"`      // smart | off
+	LanDirect      *bool           `json:"lan_direct"`   // локальная сеть мимо VPN (nil — по умолчанию да)
+	SystemProxy    bool            `json:"system_proxy"` // включать системный прокси при подключении
+	PingURL        string          `json:"ping_url"`
+	ProxyActive    bool            `json:"proxy_active"` // прокси включён нами — снять после аварийного выхода
+	Lang           string          `json:"lang"`         // язык интерфейса; пусто — как в системе
+	PingOnOpen     bool            `json:"ping_on_open"`
+	TestAfter      bool            `json:"test_after_connect"`
+	LanWdtt        bool            `json:"lan_direct_wdtt"`
+	WdttServer     int             `json:"wdtt_server"`
+	Lists          UserLists       `json:"lists"` // свои списки основного VPN
+	WdttLists      UserLists       `json:"wdtt_lists"`
+	WdttRouting    string          `json:"wdtt_routing"`
+	WdttWorkers    int             `json:"wdtt_workers"`
+	PingMethod     string          `json:"ping_method"`
+	AppMode        string          `json:"app_mode"`
+	SelectedApps   []string        `json:"selected_apps"`
+	ConnectOnOpen  bool            `json:"connect_on_open"`
+	ConnectOnBoot  bool            `json:"connect_on_boot"`
+	LastMode       string          `json:"last_mode"`
+	Appearance     map[string]any  `json:"appearance,omitempty"`
+	JournalPrimary bool            `json:"journal_primary"`
+	JournalReserve bool            `json:"journal_reserve"`
 }
 
 func dataDir() string {
@@ -52,6 +65,21 @@ func loadSettings() *Settings {
 	if s.LanDirect == nil {
 		t := true
 		s.LanDirect = &t
+	}
+	if s.WdttWorkers < 1 || s.WdttWorkers > 30 {
+		s.WdttWorkers = 30
+	}
+	if s.WdttRouting != "smart" {
+		s.WdttRouting = "off"
+	}
+	if s.PingMethod != "tcp" && s.PingMethod != "icmp" {
+		s.PingMethod = "http"
+	}
+	if s.AppMode != "exclude" && s.AppMode != "include" {
+		s.AppMode = "all"
+	}
+	if s.NetworkMode != "tun" {
+		s.NetworkMode = "proxy"
 	}
 	return s
 }

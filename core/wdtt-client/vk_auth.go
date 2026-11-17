@@ -173,7 +173,7 @@ type TurnCredentials struct {
 	Password    string
 	ServerAddrs []string
 	ExpiresAt   time.Time
-	Link        string
+	Link        string `json:"-"`
 }
 
 type StreamCredentialsCache struct {
@@ -229,6 +229,9 @@ func getStreamCache(streamID int) *StreamCredentialsCache {
 func (c *StreamCredentialsCache) invalidate(streamID int) {
 	c.mutex.Lock()
 	c.creds = TurnCredentials{}
+	if startupTurnStore != nil {
+		startupTurnStore.forget(streamID)
+	}
 	c.mutex.Unlock()
 
 	c.errorCount.Store(0)
@@ -291,7 +294,7 @@ func vkDelayRandom(minMs, maxMs int) {
 	time.Sleep(time.Duration(ms) * time.Millisecond)
 }
 
-func getVkCredsCached(ctx context.Context, link string, streamID int) (string, string, []string, error) {
+func getVkCredsCached(ctx context.Context, link string, streamID int, startup bool) (string, string, []string, error) {
 	cache := getStreamCache(streamID)
 	cacheID := getCacheID(streamID)
 
@@ -314,7 +317,7 @@ func getVkCredsCached(ctx context.Context, link string, streamID int) (string, s
 		return cache.creds.Username, cache.creds.Password, cloneStringSlice(cache.creds.ServerAddrs), nil
 	}
 
-	user, pass, addrs, err := fetchVkCredsSerialized(ctx, link, streamID)
+	user, pass, addrs, err := fetchVkCredsSerialized(ctx, link, streamID, startup)
 	if err != nil {
 		return "", "", nil, err
 	}
@@ -332,30 +335,41 @@ func getVkCredsCached(ctx context.Context, link string, streamID int) (string, s
 var (
 	vkRequestMu           sync.Mutex
 	globalLastVkFetchTime time.Time
+	vkBackoffUntil        time.Time
 )
 
-func fetchVkCredsSerialized(ctx context.Context, link string, streamID int) (string, string, []string, error) {
+func fetchVkCredsSerialized(ctx context.Context, link string, streamID int, startup bool) (string, string, []string, error) {
 	vkRequestMu.Lock()
 	defer vkRequestMu.Unlock()
 
-	minInterval := 3*time.Second + time.Duration(rand.Intn(3000))*time.Millisecond
-	elapsed := time.Since(globalLastVkFetchTime)
-
-	if !globalLastVkFetchTime.IsZero() && elapsed < minInterval {
-		wait := minInterval - elapsed
-		log.Printf("[STREAM %d] [VK Auth] Throttling: waiting %v to prevent rate limit...", streamID, wait.Truncate(time.Millisecond))
+	var minInterval time.Duration
+	if !managedClient || !startup {
+		minInterval = 3*time.Second + time.Duration(rand.Intn(3000))*time.Millisecond
+	}
+	if wait := vkRequestDelay(time.Now(), globalLastVkFetchTime, vkBackoffUntil, minInterval); wait > 0 {
+		log.Printf("[STREAM %d] [VK Auth] Waiting %v before requesting TURN credentials", streamID, wait.Truncate(time.Millisecond))
 		select {
 		case <-ctx.Done():
 			return "", "", nil, ctx.Err()
 		case <-time.After(wait):
 		}
 	}
+	if err := ctx.Err(); err != nil {
+		return "", "", nil, err
+	}
+	user, pass, addresses, err := fetchVkCreds(ctx, link, streamID)
+	globalLastVkFetchTime = time.Now()
+	if limit := asVKRateLimit(err); limit != nil {
+		vkBackoffUntil = globalLastVkFetchTime.Add(6 * time.Second)
+		if limit.retryAt.After(vkBackoffUntil) {
+			vkBackoffUntil = limit.retryAt
+		}
+	}
+	return user, pass, addresses, err
+}
 
-	defer func() {
-		globalLastVkFetchTime = time.Now()
-	}()
-
-	return fetchVkCreds(ctx, link, streamID)
+func vkRequestDelay(now, last, backoff time.Time, minInterval time.Duration) time.Duration {
+	return max(0, last.Add(minInterval).Sub(now), backoff.Sub(now))
 }
 
 func fetchVkCreds(ctx context.Context, link string, streamID int) (string, string, []string, error) {
@@ -368,6 +382,9 @@ func fetchVkCreds(ctx context.Context, link string, streamID int) (string, strin
 			log.Printf("[STREAM %d] [VK Auth] Success via VK Calls path", streamID)
 			return user, pass, addrs, nil
 		} else {
+			if asVKRateLimit(err) != nil {
+				return "", "", nil, err
+			}
 			if callErr, ok := asCallUnavailableError(err); ok {
 				log.Printf("[STREAM %d] [VK Auth] VK Calls path returned non-retryable call error: %v", streamID, callErr)
 				return "", "", nil, callErr
@@ -397,6 +414,9 @@ func fetchVkCreds(ctx context.Context, link string, streamID int) (string, strin
 
 		if callErr, ok := asCallUnavailableError(err); ok {
 			return "", "", nil, callErr
+		}
+		if asVKRateLimit(err) != nil {
+			return "", "", nil, err
 		}
 
 		if strings.Contains(err.Error(), "CAPTCHA_WAIT_REQUIRED") || strings.Contains(err.Error(), "FATAL_CAPTCHA") {
@@ -470,6 +490,11 @@ func getTokenChain(ctx context.Context, link string, streamID int, creds VKCrede
 				log.Printf("close response body: %s", closeErr)
 			}
 		}()
+		if managedClient {
+			if limit := vkHTTPRateLimit(httpResp); limit != nil {
+				return nil, limit
+			}
+		}
 
 		body, err := io.ReadAll(httpResp.Body)
 		if err != nil {
@@ -479,6 +504,11 @@ func getTokenChain(ctx context.Context, link string, streamID int, creds VKCrede
 		err = json.Unmarshal(body, &resp)
 		if err != nil {
 			return nil, err
+		}
+		if managedClient {
+			if limit := vkResponseRateLimit(resp); limit != nil {
+				return nil, limit
+			}
 		}
 		return resp, nil
 	}
@@ -501,7 +531,9 @@ func getTokenChain(ctx context.Context, link string, streamID int, creds VKCrede
 
 	data = fmt.Sprintf("vk_join_link=https://vk.com/call/join/%s&fields=photo_200&access_token=%s", link, token1)
 	resp, err = doRequest(data, "https://api.vk.ru/method/calls.getCallPreview?v=5.275&client_id="+creds.ClientID)
-	if err != nil {
+	if asVKRateLimit(err) != nil {
+		return "", "", nil, err
+	} else if err != nil {
 		log.Printf("[STREAM %d] [VK Auth] Warning: getCallPreview failed: %v", streamID, err)
 	} else if callErr := fatalCallError(resp); callErr != nil {
 		log.Printf("[STREAM %d] [VK Auth] getCallPreview returned non-retryable call error: %v", streamID, callErr)
@@ -759,6 +791,6 @@ func isWebViewCaptchaTimeout(err error) bool {
 	return err != nil && strings.Contains(strings.ToLower(err.Error()), "timed out")
 }
 
-func GetCreds(ctx context.Context, link string, streamID int) (string, string, []string, error) {
-	return getVkCredsCached(ctx, link, streamID)
+func GetCreds(ctx context.Context, link string, streamID int, startup bool) (string, string, []string, error) {
+	return getVkCredsCached(ctx, link, streamID, startup)
 }

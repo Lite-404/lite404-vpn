@@ -49,13 +49,22 @@ class WireGuardHelper(context: Context) {
                 throw IllegalStateException("VPN-разрешение не выдано")
             }
 
+            if (!WdttRouter.prepared) WdttRouter.prepare(appContext, cachedOnly = true)
+            if (WdttRouter.enabled) {
+                stopSharedTunnel("switching to smart routing")
+                WdttRouter.start(appContext, configString)
+                disabledByEmptyWhitelist = false
+                return@withContext
+            }
+            WdttRouter.stop(appContext)
+
             ensureGoBackendServiceStarted()
 
             val parsedConfig = Config.parse(ByteArrayInputStream(configString.toByteArray(Charsets.UTF_8)))
 
             val builder = Interface.Builder()
                 .parseAddresses(parsedConfig.`interface`.addresses.joinToString(", ") { it.toString() })
-            
+
             if (parsedConfig.`interface`.dnsServers.isNotEmpty()) {
                 builder.parseDnsServers(parsedConfig.`interface`.dnsServers.joinToString(", ") { it.hostAddress ?: "" })
             }
@@ -64,14 +73,14 @@ class WireGuardHelper(context: Context) {
             }
             if (parsedConfig.`interface`.mtu.isPresent) {
                 val serverMtu = parsedConfig.`interface`.mtu.get()
-                
+
                 builder.parseMtu(serverMtu.coerceAtLeast(1280).toString())
             } else {
                 builder.parseMtu("1280")
             }
             builder.parsePrivateKey(parsedConfig.`interface`.keyPair.privateKey.toBase64())
 
-            
+
             val settingsStore = SettingsStore(appContext)
             settingsStore.migrateLegacyWhitelistMode()
             val savedExcluded = settingsStore.excludedApps.first()
@@ -107,12 +116,15 @@ class WireGuardHelper(context: Context) {
                 if (peer.endpoint.isPresent) peerBuilder.parseEndpoint(peer.endpoint.get().toString())
                 if (peer.persistentKeepalive.isPresent) peerBuilder.parsePersistentKeepalive(peer.persistentKeepalive.get().toString())
             }
-            
+
             // весь интернет, кроме локальной сети (к ней — напрямую); DNS-сервер туннеля (10.66.x — тоже частный адрес)
             // добавляем отдельно, иначе запросы к нему ушли бы мимо туннеля
             val tunnelDns = parsedConfig.`interface`.dnsServers.mapNotNull { it.hostAddress }
                 .filter { ':' !in it }.map { "$it/32" }
-            val allowed = if (Prefs(appContext).lanDirectWdtt) listOf(Lan.allowedIpsWithoutLan()) + tunnelDns else listOf("0.0.0.0/0")
+            val prefs = Prefs(appContext)
+            val allowed = WdttRoutes.build(prefs.lanDirectWdtt, prefs.wdttDirect, prefs.wdttProxy, tunnelDns)
+            check(allowed.isNotEmpty()) { tr("Списки резервного VPN исключают все маршруты") }
+            check(allowed.size <= 1024) { tr("В списках резервного VPN слишком много отдельных маршрутов") }
             peerBuilder.parseAllowedIPs(allowed.joinToString(", "))
 
             val finalConfig = Config.Builder()
@@ -169,6 +181,7 @@ class WireGuardHelper(context: Context) {
 
     suspend fun watchdogState(): WatchdogState = wgMutex.withLock {
         when {
+            WdttRouter.enabled -> if (WdttRouter.up(appContext)) WatchdogState.UP else WatchdogState.DOWN
             disabledByEmptyWhitelist -> WatchdogState.DISABLED_BY_EMPTY_WHITELIST
             isSharedTunnelUpLocked() -> WatchdogState.UP
             else -> WatchdogState.DOWN
@@ -178,6 +191,7 @@ class WireGuardHelper(context: Context) {
     suspend fun stopTunnel() = wgMutex.withLock {
         withContext(Dispatchers.IO) {
             try {
+                WdttRouter.stop(appContext)
                 sharedTunnel?.let {
                     backend.setState(it, Tunnel.State.DOWN, null)
                     sharedTunnel = null
@@ -241,6 +255,7 @@ class WireGuardHelper(context: Context) {
     }
 
     private fun isSharedTunnelUpLocked(): Boolean {
+        if (WdttRouter.enabled) return WdttRouter.up(appContext)
         val current = sharedTunnel ?: return false
         return try {
             backend.getState(current) == Tunnel.State.UP

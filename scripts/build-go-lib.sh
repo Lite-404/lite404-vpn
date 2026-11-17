@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-GO_DIR="$ROOT_DIR/app/src/main/assets/android-client"
+GO_DIR="$ROOT_DIR/core/wdtt-client"
 ABI="${1:-arm64-v8a}"
 API_LEVEL="${ANDROID_NATIVE_API_LEVEL:-28}"
 NDK_DIR="${ANDROID_NDK_HOME:-${ANDROID_NDK_ROOT:-}}"

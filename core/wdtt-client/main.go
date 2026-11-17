@@ -9,12 +9,16 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
 )
+
+// App-managed desktop clients use the same fast and bounded startup as Android.
+var managedClient = runtime.GOOS == "android" || os.Getenv("WDTT_EVENTS") == "1"
 
 var CaptchaResultChan = make(chan string, 1)
 
@@ -146,7 +150,7 @@ func main() {
 	listen := flag.String("listen", "127.0.0.1:9000", "локальный адрес")
 	vkHash := flag.String("vk", "", "хеши VK-звонков (через запятую)")
 	peerAddr := flag.String("peer", "", "адрес:порт VPS сервера")
-	numW := flag.Int("n", 24, "количество воркеров (кратно 12)")
+	numW := flag.Int("n", 24, "количество воркеров")
 
 	deviceID := flag.String("device-id", "unknown", "уникальный ID устройства")
 	connPassword := flag.String("password", "", "пароль подключения")
@@ -199,14 +203,19 @@ func main() {
 		log.Fatalf("[КЛИЕНТ] WRAP key derive: %v", err)
 	}
 
-	maxWorkers := 108
-	if *numW > maxWorkers {
-		*numW = maxWorkers
+	groupSize := workersPerGroup
+	if managedClient {
+		groupSize = 10
 	}
-	if *numW < workersPerGroup {
-		*numW = workersPerGroup
+	*numW = max(1, min(*numW, 108))
+	if !managedClient {
+		*numW = max(groupSize, *numW)
 	}
-	*numW = (*numW / workersPerGroup) * workersPerGroup
+	if !managedClient {
+		*numW = (*numW / groupSize) * groupSize
+	} else {
+		restoreTurnStartupCache(os.Getenv("WDTT_TURN_CACHE"), hashes, cleanPeerAddr, *deviceID, os.Getenv("WDTT_NETWORK_HANDLE"))
+	}
 
 	tp := &TurnParams{
 		Host:     *host,
@@ -247,7 +256,7 @@ func main() {
 		localPort = "9000"
 	}
 
-	numGroups := *numW / workersPerGroup
+	numGroups := (*numW + groupSize - 1) / groupSize
 
 	wrapStatus := "OFF"
 	if len(wrapKey) == wrapKeyLen {
@@ -266,7 +275,7 @@ func main() {
 	log.Printf("[КЛИЕНТ] VK Creds: Client IDs: %s", GetActiveClientIdsString())
 	log.Printf("[КЛИЕНТ] VK Auth: %s", activeVKAuthMode)
 	log.Printf("[КЛИЕНТ] TLS: %s fingerprint", GetActiveFingerprint())
-	log.Printf("[КЛИЕНТ] Воркеров: %d (групп: %d, по %d)", *numW, numGroups, workersPerGroup)
+	log.Printf("[КЛИЕНТ] Воркеров: %d (групп: %d, до %d в каждой)", *numW, numGroups, groupSize)
 	log.Printf("[КЛИЕНТ] Хешей: %d", len(hashes))
 	log.Printf("[КЛИЕНТ] Слушаю: %s | Пир: %s", *listen, cleanPeerAddr)
 	log.Printf("[КЛИЕНТ] Протокол: UDP")
@@ -308,18 +317,21 @@ func main() {
 				}
 				finalConf = strings.Join(newLines, "\n")
 			}
-			fmt.Println()
-			fmt.Println("╔══════════════ WireGuard Конфиг ══════════════╗")
-			for _, line := range strings.Split(finalConf, "\n") {
-				fmt.Printf("║ %-44s ║\n", line)
+			if eventOutputEnabled {
+				emitConfig(finalConf)
+			} else {
+				fmt.Println()
+				fmt.Println("╔══════════════ WireGuard Конфиг ══════════════╗")
+				for _, line := range strings.Split(finalConf, "\n") {
+					fmt.Printf("║ %-44s ║\n", line)
+				}
+				fmt.Println("╚══════════════════════════════════════════════╝")
 			}
-			fmt.Println("╚══════════════════════════════════════════════╝")
 			if err := os.WriteFile("wg-turn.conf", []byte(finalConf+"\n"), 0600); err != nil {
 				log.Printf("[КОНФИГ] Ошибка сохранения: %v", err)
 			} else {
 				log.Println("[КОНФИГ] Сохранён в wg-turn.conf")
 			}
-			emitConfig(finalConf)
 		case <-ctx.Done():
 		}
 	}()
@@ -347,12 +359,14 @@ func main() {
 			mySignalCreds = chC
 			prevWaitCreds = chC
 
-			chS := make(chan struct{})
-			mySignalSpawn = chS
-			prevWaitSpawn = chS
+			if !managedClient {
+				chS := make(chan struct{})
+				mySignalSpawn = chS
+				prevWaitSpawn = chS
+			}
 		}
 
-		ids := make([]int, workersPerGroup)
+		ids := make([]int, min(groupSize, *numW-workerIDCounter+1))
 		for i := range ids {
 			ids[i] = workerIDCounter
 			workerIDCounter++

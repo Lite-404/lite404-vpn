@@ -47,6 +47,10 @@ object Routing {
         }
     }
 
+    fun hasGeo(ctx: Context): Boolean = listOf(GEOIP, GEOSITE).all {
+        File(XrayCore.geoDir(ctx), it).length() > 0
+    }
+
     private fun download(url: String, target: File) {
         val c = URL(url).openConnection() as HttpURLConnection
         c.connectTimeout = 10_000

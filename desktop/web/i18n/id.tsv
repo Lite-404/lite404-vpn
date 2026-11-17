@@ -141,6 +141,8 @@ iCloud, App Store, обновления	iCloud, App Store, pembaruan
 По одному в строке: сайт (example.ru — вместе с поддоменами), IP-адрес или подсеть (10.0.0.0/8).	Satu per baris: situs (example.ru — termasuk subdomain), alamat IP, atau subnet (10.0.0.0/8).
 Сайтов: %s, адресов: %s	Situs: %s, alamat: %s
 Пинг — время запроса через сервер по уже открытому соединению (как в v2rayNG и NekoBox), а не ICMP.	Ping adalah waktu permintaan lewat server pada koneksi yang sudah terbuka (seperti di v2rayNG dan NekoBox), bukan ICMP.
+Интерфейс	Antarmuka
+Переключение вкладок свайпом	Geser untuk beralih tab
 
 Устанавливаем обновление…	Memasang pembaruan…
 Перезапуск…	Memulai ulang…

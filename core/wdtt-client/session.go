@@ -8,6 +8,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cbeuw/connutil"
@@ -19,18 +20,23 @@ import (
 
 const (
 	workerSendBuf      = 128
-	sessionReadTimeout = 30 * time.Minute
 	readBufSize        = 1600
 	socketBufSize      = 625 * 1024
 	keepaliveByte      = 0xFF
 	keepaliveInterval  = 15 * time.Second
+	keepaliveTimeout   = 3 * keepaliveInterval
+	packetWriteTimeout = 4 * time.Second
+	relayPipeBuffer    = 64 * 1024
 )
 
-var handshakeSem = make(chan struct{}, 3)
+var handshakeSem = make(chan struct{}, dtlsParallelism())
 
-type connectedUDPConn struct{ *net.UDPConn }
-
-func (c *connectedUDPConn) WriteTo(p []byte, _ net.Addr) (int, error) { return c.Write(p) }
+func dtlsParallelism() int {
+	if managedClient {
+		return 15
+	}
+	return 3
+}
 
 func RunSession(
 	ctx context.Context,
@@ -46,6 +52,8 @@ func RunSession(
 	stats *Stats,
 ) (bool, error) {
 	configDelivered := false
+	sessCtx, sessCancel := context.WithCancelCause(ctx)
+	defer sessCancel(nil)
 
 	if len(creds.TurnURLs) == 0 {
 		return false, fmt.Errorf("нет TURN URL в учетных данных")
@@ -75,7 +83,7 @@ func RunSession(
 	defer c.Close()
 	_ = c.SetReadBuffer(socketBufSize)
 	_ = c.SetWriteBuffer(socketBufSize)
-	var turnConn net.PacketConn = &connectedUDPConn{c}
+	turnConn := &connectedUDPConn{UDPConn: c, fail: sessCancel}
 
 	log.Printf("[СЕССИЯ #%d] TURN UDP (%s)", sessionID, turnAddr)
 
@@ -126,10 +134,8 @@ func RunSession(
 
 	log.Printf("[СЕССИЯ #%d] Relay: %s", sessionID, relay.LocalAddr())
 
-	pipeA, pipeB := connutil.AsyncPacketPipe()
-
-	sessCtx, sessCancel := context.WithCancel(ctx)
-	defer sessCancel()
+	pipeA, pipeB := connutil.LimitedAsyncPacketPipe(relayPipeBuffer)
+	defer pipeA.Close()
 
 	var sessionWg sync.WaitGroup
 	sessionWg.Add(1)
@@ -160,14 +166,14 @@ func RunSession(
 	}
 
 	stopRelay := context.AfterFunc(sessCtx, func() {
-		_ = relay.SetDeadline(time.Now())
-		_ = pipeA.SetDeadline(time.Now())
+		_ = relay.SetReadDeadline(time.Now())
+		_ = pipeA.Close()
 	})
 	defer stopRelay()
 
 	go func() {
 		defer relayWg.Done()
-		defer sessCancel()
+		defer sessCancel(nil)
 
 		readBufLen := readBufSize + 80
 		buf := make([]byte, readBufLen)
@@ -175,6 +181,7 @@ func RunSession(
 		for {
 			n, _, readErr := relay.ReadFrom(buf)
 			if readErr != nil {
+				sessCancel(fmt.Errorf("чтение TURN relay: %w", readErr))
 				return
 			}
 			payload := buf[:n]
@@ -191,6 +198,7 @@ func RunSession(
 				payload = plain[:m]
 			}
 			if _, writeErr := pipeA.WriteTo(payload, peer); writeErr != nil {
+				sessCancel(fmt.Errorf("запись TURN → DTLS: %w", writeErr))
 				return
 			}
 		}
@@ -198,11 +206,12 @@ func RunSession(
 
 	go func() {
 		defer relayWg.Done()
-		defer sessCancel()
+		defer sessCancel(nil)
 		b := make([]byte, readBufSize)
 		for {
 			n, _, readErr := pipeA.ReadFrom(b)
 			if readErr != nil {
+				sessCancel(fmt.Errorf("чтение DTLS → TURN: %w", readErr))
 				return
 			}
 			out := b[:n]
@@ -217,6 +226,7 @@ func RunSession(
 				}
 			}
 			if _, writeErr := relay.WriteTo(out, peer); writeErr != nil {
+				sessCancel(fmt.Errorf("запись в TURN relay: %w", writeErr))
 				return
 			}
 		}
@@ -247,6 +257,10 @@ func RunSession(
 		return false, fmt.Errorf("DTLS клиент: %w", err)
 	}
 	defer dtlsConn.Close()
+	stopDTLS := context.AfterFunc(sessCtx, func() {
+		_ = dtlsConn.SetDeadline(time.Now())
+	})
+	defer stopDTLS()
 
 	hctx, hcancel := context.WithTimeout(sessCtx, 20*time.Second)
 	log.Printf("[ВОРКЕР #%d] [DTLS] Рукопожатие (Handshake)...", sessionID)
@@ -255,6 +269,9 @@ func RunSession(
 	<-handshakeSem
 
 	if err != nil {
+		if sessCtx.Err() != nil {
+			return false, context.Cause(sessCtx)
+		}
 		if useWrap {
 			errStr := strings.ToLower(err.Error())
 			if strings.Contains(errStr, "deadline") || strings.Contains(errStr, "timeout") {
@@ -264,9 +281,6 @@ func RunSession(
 		return false, fmt.Errorf("DTLS хендшейк: %w", err)
 	}
 	log.Printf("[ВОРКЕР #%d] [DTLS] Соединение установлено ✓", sessionID)
-
-	stats.ActiveConnections.Add(1)
-	defer stats.ActiveConnections.Add(-1)
 
 	if getConfig && configCh != nil {
 		conf, confErr := RequestConfig(dtlsConn, localPort, deviceID, password)
@@ -290,58 +304,63 @@ func RunSession(
 		}
 	}
 
-	log.Printf("[ВОРКЕР #%d] [READY] Туннель готов к работе ✓", sessionID)
-	emitReady()
-
 	slot := &WorkerSlot{
 		ID:     sessionID,
 		SendCh: make(chan []byte, workerSendBuf),
 	}
 	d.Register(slot)
-	defer d.Unregister(slot)
+	rememberUsableTurnCredentials(creds)
+	log.Printf("[ВОРКЕР #%d] [READY] Туннель готов к работе ✓", sessionID)
+	emitReady()
 
 	var proxyWg sync.WaitGroup
-	proxyWg.Add(3)
-
-	stopDTLS := context.AfterFunc(sessCtx, func() {
-		_ = dtlsConn.SetDeadline(time.Now())
-	})
-	defer stopDTLS()
+	proxyWg.Add(2)
+	readyAt := time.Now()
+	var lastEcho atomic.Int64
 
 	go func() {
 		defer proxyWg.Done()
+		defer sessCancel(nil)
 		t := time.NewTicker(keepaliveInterval)
 		defer t.Stop()
 		ping := []byte{keepaliveByte}
+		write := func(pkt []byte) error {
+			deadline := time.Now().Add(packetWriteTimeout)
+			_ = dtlsConn.SetWriteDeadline(deadline)
+			_ = pipeB.SetWriteDeadline(deadline)
+			if err := sessCtx.Err(); err != nil {
+				return err
+			}
+			_, err := dtlsConn.Write(pkt)
+			return err
+		}
 		for {
 			select {
 			case <-sessCtx.Done():
 				return
 			case <-t.C:
-				_ = dtlsConn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-				if _, err := dtlsConn.Write(ping); err != nil {
+				if turnConn.refreshOverdue(time.Now(), keepaliveTimeout) {
+					sessCancel(fmt.Errorf("TURN Refresh: нет ответа в течение %s", keepaliveTimeout))
 					return
 				}
-			}
-		}
-	}()
-
-	go func() {
-		defer proxyWg.Done()
-		defer sessCancel()
-		for {
-			select {
-			case <-sessCtx.Done():
-				return
+				// Older servers may not echo 0xff. Only expect replies once
+				// the peer has demonstrated support on this connection.
+				if last := time.Duration(lastEcho.Load()); last > 0 && time.Since(readyAt)-last >= keepaliveTimeout {
+					sessCancel(fmt.Errorf("DTLS: нет ответа на keepalive в течение %s", keepaliveTimeout))
+					return
+				}
+				if err := write(ping); err != nil {
+					sessCancel(fmt.Errorf("отправка DTLS keepalive: %w", err))
+					return
+				}
 			case pkt, ok := <-slot.SendCh:
 				if !ok {
 					return
 				}
-				_ = dtlsConn.SetWriteDeadline(time.Now().Add(sessionReadTimeout))
-				_, writeErr := dtlsConn.Write(pkt)
+				writeErr := write(pkt)
 				putPktBuf(pkt)
 				if writeErr != nil {
-					log.Printf("[ВОРКЕР #%d] Ошибка Writer: %v", sessionID, writeErr)
+					sessCancel(fmt.Errorf("запись DTLS: %w", writeErr))
 					return
 				}
 			}
@@ -350,24 +369,22 @@ func RunSession(
 
 	go func() {
 		defer proxyWg.Done()
-		defer sessCancel()
+		defer sessCancel(nil)
 		for {
 			pkt := getPktBuf(2048)
-			_ = dtlsConn.SetReadDeadline(time.Now().Add(sessionReadTimeout))
+			if sessCtx.Err() != nil {
+				putPktBuf(pkt)
+				return
+			}
 			n, readErr := dtlsConn.Read(pkt)
 			if readErr != nil {
 				putPktBuf(pkt)
-				if sessCtx.Err() != nil {
-					return
-				}
-				if ne, ok := readErr.(net.Error); ok && ne.Timeout() {
-					continue
-				}
-				log.Printf("[ВОРКЕР #%d] Ошибка Reader: %v", sessionID, readErr)
+				sessCancel(fmt.Errorf("чтение DTLS: %w", readErr))
 				return
 			}
 
 			if n == 1 && pkt[0] == keepaliveByte {
+				lastEcho.Store(int64(time.Since(readyAt)))
 				putPktBuf(pkt)
 				continue
 			}
@@ -382,12 +399,15 @@ func RunSession(
 		}
 	}()
 
+	<-sessCtx.Done()
+	d.Unregister(slot)
+	_ = pipeA.Close()
+	_ = relay.Close()
+	tc.Close()
+	_ = c.Close()
 	proxyWg.Wait()
-	sessCancel()
 	relayWg.Wait()
 	sessionWg.Wait()
-	_ = pipeA.Close()
-	_ = pipeB.Close()
 	log.Printf("[СЕССИЯ #%d] Завершена", sessionID)
-	return configDelivered, nil
+	return configDelivered, context.Cause(sessCtx)
 }

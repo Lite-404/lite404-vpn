@@ -13,8 +13,8 @@ android {
         applicationId = "com.lite404.vpn"
         minSdk = 28
         targetSdk = 35
-        versionCode = 28
-        versionName = "0.10.4"
+        versionCode = 29
+        versionName = "0.10.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -69,7 +69,7 @@ android {
             } else if (keyFile != null) {
                 file(keyFile)
             } else null
-            
+
             if (resolvedFile != null && resolvedFile.exists()) {
                 signingConfig = signingConfigs.getByName("release")
                 println("✅ Signing config applied: ${resolvedFile.absolutePath}")

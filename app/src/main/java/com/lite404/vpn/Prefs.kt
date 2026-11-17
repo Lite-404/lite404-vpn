@@ -18,6 +18,72 @@ class Prefs(ctx: Context) {
         get() = p.getLong("config_at", 0)
         set(v) = p.edit().putLong("config_at", v).apply()
 
+    var swipeTabsEnabled: Boolean
+        get() = p.getBoolean("swipe_tabs_enabled", true)
+        set(v) = p.edit().putBoolean("swipe_tabs_enabled", v).apply()
+
+    var lightweight: Boolean
+        get() = p.getBoolean("lightweight", false)
+        set(v) = p.edit().putBoolean("lightweight", v).apply()
+
+    var haptics: Boolean
+        get() = p.getBoolean("haptics", true)
+        set(v) = p.edit().putBoolean("haptics", v).apply()
+
+    var amoled: Boolean
+        get() = p.getBoolean("amoled", false)
+        set(v) = p.edit().putBoolean("amoled", v).apply()
+
+    var accentTheme: String
+        get() = p.getString("accent_theme", "lime") ?: "lime"
+        set(v) = p.edit().putString("accent_theme", v).apply()
+
+    var textScale: Float
+        get() = p.getFloat("text_scale", 1f).coerceIn(.85f, 1.25f)
+        set(v) = p.edit().putFloat("text_scale", v.coerceIn(.85f, 1.25f)).apply()
+
+    var connectOnOpen: Boolean
+        get() = p.getBoolean("connect_on_open", false)
+        set(v) = p.edit().putBoolean("connect_on_open", v).apply()
+
+    var connectOnBoot: Boolean
+        get() = p.getBoolean("connect_on_boot", false)
+        set(v) = p.edit().putBoolean("connect_on_boot", v).apply()
+
+    var lastVpn: VpnMode
+        get() = if (p.getString("last_vpn", null) == "WDTT" ||
+            (!p.contains("last_vpn") && desiredMode == "wdtt")) VpnMode.WDTT else VpnMode.XRAY
+        set(v) = p.edit().putString("last_vpn", v.name).apply()
+
+    var wdttWorkers: Int
+        get() = p.getInt("wdtt_workers", WdttController.WORKERS).coerceIn(1, WdttController.WORKERS)
+        set(v) = p.edit().putInt("wdtt_workers", v.coerceIn(1, WdttController.WORKERS)).apply()
+
+    var wdttDirect: String
+        get() = p.getString("wdtt_direct", "") ?: ""
+        set(v) = p.edit().putString("wdtt_direct", v).apply()
+
+    var wdttProxy: String
+        get() = p.getString("wdtt_proxy", "") ?: ""
+        set(v) = p.edit().putString("wdtt_proxy", v).apply()
+
+    internal var pingMethod: PingMethod
+        get() = PingMethod.entries.firstOrNull { it.name == p.getString("ping_method", null) } ?: PingMethod.HTTP_GET
+        set(v) = p.edit().putString("ping_method", v.name).apply()
+
+    fun appsFor(mode: String): Set<String> = if (mode == "include") {
+        p.getStringSet("apps_include", null)?.toSet() ?: if (appsMode == "include") apps else emptySet()
+    } else {
+        p.getStringSet("apps_exclude", null)?.toSet() ?: if (appsMode != "include") apps else emptySet()
+    }
+
+    fun saveApps(mode: String, selected: Set<String>) {
+        val include = if (mode == "include") selected else appsFor("include")
+        val exclude = if (mode == "exclude") selected else appsFor("exclude")
+        p.edit().putStringSet("apps_include", include).putStringSet("apps_exclude", exclude)
+            .putString("apps_mode", mode).putStringSet("apps", selected).apply()
+    }
+
     var xrayIndex: Int
         get() = p.getInt("xray_index", 0)
         set(v) = p.edit().putInt("xray_index", v).apply()
@@ -27,13 +93,11 @@ class Prefs(ctx: Context) {
         set(v) = p.edit().putInt("wdtt_index", v).apply()
 
     /** Туннелирование по приложениям: off — всё через VPN; exclude — выбранные мимо VPN; include — только выбранные через VPN. */
-    var appsMode: String
+    val appsMode: String
         get() = p.getString("apps_mode", "off") ?: "off"
-        set(v) = p.edit().putString("apps_mode", v).apply()
 
-    var apps: Set<String>
+    val apps: Set<String>
         get() = p.getStringSet("apps", emptySet())?.toSet() ?: emptySet()
-        set(v) = p.edit().putStringSet("apps", v).apply()
 
     /** Какой режим пользователь включил последним: "xray", "wdtt" или "" (выключено). Нужен, чтобы после
      *  того как система убила процесс во сне, восстановить именно его и не мешать другому. */
@@ -76,15 +140,15 @@ class Prefs(ctx: Context) {
 
     fun userLists() = Lists.User(readyLists, customDirect, customProxy)
 
-    /** Российские приложения, которые уже предлагались автоматически (см. [AutoApps]); снятые вручную не возвращаются. */
-    var autoAppsSeen: Set<String>
-        get() = p.getStringSet("auto_apps_seen", emptySet())?.toSet() ?: emptySet()
-        set(v) = p.edit().putStringSet("auto_apps_seen", v).apply()
+    var wdttRoutingMode: String
+        get() = p.getString("wdtt_routing", Routing.MODE_OFF) ?: Routing.MODE_OFF
+        set(v) = p.edit().putString("wdtt_routing", v).apply()
 
-    /** Автовыбор приложений уже выполнялся (первый запуск). */
-    var autoAppsDone: Boolean
-        get() = p.getBoolean("auto_apps_done", false)
-        set(v) = p.edit().putBoolean("auto_apps_done", v).apply()
+    var wdttReadyLists: Set<String>
+        get() = p.getStringSet("wdtt_ready_lists", emptySet())?.toSet() ?: emptySet()
+        set(v) = p.edit().putStringSet("wdtt_ready_lists", v).apply()
+
+    fun wdttUserLists() = Lists.User(wdttReadyLists, wdttDirect, wdttProxy)
 
     /** Локальная сеть (192.168.x.x и др.) мимо VPN — отдельно для основного и резервного VPN. */
     var lanDirectXray: Boolean

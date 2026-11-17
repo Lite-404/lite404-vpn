@@ -59,6 +59,11 @@ class XrayVpnService : VpnService() {
         const val EXTRA_TEST_URL = "test_url"
         const val EXTRA_TEST_AFTER = "test_after"
         const val EXTRA_LAN_DIRECT = "lan_direct"
+        private const val EXTRA_MODE = "vpn_mode"
+
+        fun mode(ctx: Context): VpnMode = runCatching {
+            VpnMode.valueOf(File(ctx.filesDir, "core_mode").readText())
+        }.getOrDefault(VpnMode.XRAY)
 
         private const val TUN_ADDRESSES = "10.10.14.1/30,fd66:6c34:3034::1/126"
         // Ядро общее для процесса, включая смену экземпляра сервиса.
@@ -113,7 +118,7 @@ class XrayVpnService : VpnService() {
         suspend fun stopAndWait(ctx: Context) {
             val previous = state(ctx)
             if (previous != "running" && previous != "connecting" && !isAlive(ctx)) return
-            ctx.startService(Intent(ctx, XrayVpnService::class.java).setAction(ACTION_STOP))
+            ctx.startService(Intent(ctx, XrayVpnService::class.java).setAction(ACTION_STOP).putExtra("keep_transport", true))
             repeat(70) {
                 if (runCatching { stateFile(ctx).readText() }.getOrNull() == "stopped" && !isAlive(ctx)) return
                 delay(100)
@@ -121,17 +126,22 @@ class XrayVpnService : VpnService() {
             check(!isAlive(ctx)) { tr("Не удалось остановить VPN") }
         }
 
-        fun start(ctx: Context, config: String, name: String): String {
+        fun start(ctx: Context, config: String, name: String, mode: VpnMode = VpnMode.XRAY): String {
             val request = UUID.randomUUID().toString()
             configFile(ctx).writeText("$request\n$config")
             val prefs = Prefs(ctx)
+            File(ctx.filesDir, "core_mode").writeText(mode.name)
+            val transport = setOf("com.vkontakte.android", "com.vk.calls")
+            val apps = if (mode != VpnMode.WDTT) prefs.apps else
+                if (prefs.effectiveAppsMode() != "include") prefs.apps + transport else prefs.apps - transport
             val i = Intent(ctx, XrayVpnService::class.java).setAction(ACTION_START).putExtra(EXTRA_NAME, name)
                 .putExtra(EXTRA_REQUEST, request)
                 .putExtra(EXTRA_APPS_MODE, prefs.effectiveAppsMode())
-                .putExtra(EXTRA_APPS, prefs.apps.toTypedArray())
+                .putExtra(EXTRA_APPS, apps.toTypedArray())
+                .putExtra(EXTRA_MODE, mode.name)
                 .putExtra(EXTRA_TEST_URL, prefs.pingUrl)
                 .putExtra(EXTRA_TEST_AFTER, prefs.testAfterConnect)
-                .putExtra(EXTRA_LAN_DIRECT, prefs.lanDirectXray)
+                .putExtra(EXTRA_LAN_DIRECT, if (mode == VpnMode.WDTT) prefs.lanDirectWdtt else prefs.lanDirectXray)
             ctx.startForegroundService(i)
             return request
         }
@@ -139,6 +149,7 @@ class XrayVpnService : VpnService() {
         /** Проверить соединение через работающий туннель (результат — в [testResult]). */
         fun test(ctx: Context) {
             if (state(ctx) != "running") return
+            writeTest(ctx, "testing")
             runCatching {
                 ctx.startService(Intent(ctx, XrayVpnService::class.java).setAction(ACTION_TEST)
                     .putExtra(EXTRA_TEST_URL, Prefs(ctx).pingUrl))
@@ -156,7 +167,7 @@ class XrayVpnService : VpnService() {
         private fun writeTest(ctx: Context, s: String) = runCatching { testFile(ctx).writeText(s) }
     }
 
-    private data class TunOptions(val appsMode: String, val apps: List<String>, val lanDirect: Boolean)
+    private data class TunOptions(val appsMode: String, val apps: List<String>, val lanDirect: Boolean, val mode: VpnMode)
 
     private data class Uplink(val network: Network, val name: String, val index: Int)
 
@@ -194,7 +205,8 @@ class XrayVpnService : VpnService() {
                 val options = TunOptions(
                     intent.getStringExtra(EXTRA_APPS_MODE) ?: "off",
                     intent.getStringArrayExtra(EXTRA_APPS)?.toList().orEmpty(),
-                    intent.getBooleanExtra(EXTRA_LAN_DIRECT, true)
+                    intent.getBooleanExtra(EXTRA_LAN_DIRECT, true),
+                    runCatching { VpnMode.valueOf(intent.getStringExtra(EXTRA_MODE).orEmpty()) }.getOrDefault(VpnMode.XRAY)
                 )
                 foreground(name)
                 bg.post {
@@ -212,7 +224,11 @@ class XrayVpnService : VpnService() {
                     }
                 }
             }
-            else -> stopVpn()
+            else -> {
+                if (intent?.getBooleanExtra("keep_transport", false) != true) stopReserveTransport()
+                VpnJournal.record(this, mode(this), "VPN: остановка")
+                stopVpn()
+            }
         }
         return START_NOT_STICKY
     }
@@ -257,7 +273,10 @@ class XrayVpnService : VpnService() {
             if (added == 0) throw IllegalStateException(tr("выбранные приложения не установлены — измените список на вкладке «Приложения»"))
         } else {
             runCatching { b.addDisallowedApplication(packageName) }
-            if (options.appsMode == "exclude") for (a in options.apps) if (a != packageName) runCatching { b.addDisallowedApplication(a) }
+            if (options.appsMode == "exclude" || options.mode == VpnMode.WDTT)
+                for (a in options.apps) if (a != packageName &&
+                    (options.appsMode == "exclude" || a in setOf("com.vkontakte.android", "com.vk.calls")))
+                    runCatching { b.addDisallowedApplication(a) }
         }
         if (Build.VERSION.SDK_INT >= 29) b.setMetered(false)
         b.setUnderlyingNetworks(uplink?.let { arrayOf(it.network) } ?: emptyArray())
@@ -270,6 +289,7 @@ class XrayVpnService : VpnService() {
             if (configRecord.substringBefore('\n') != request) return
             clearTest()
             writeState(this, "connecting", request)
+            VpnJournal.record(this, mode(this), "VPN: подключение")
             XrayCore.initEnv(this)
             val ext = getExternalFilesDir(null)
             val log = if (ext != null && File(ext, "core.debug").exists()) {
@@ -295,9 +315,11 @@ class XrayVpnService : VpnService() {
             if (commandId != command) return
             writeState(this, "running", request)
             Log.i(TAG, "VPN started")
+            VpnJournal.record(this, mode(this), "VPN: туннель запущен")
             if (testAfterConnect && uplink != null) runTest(testUrl, attempts = 2)
         } catch (e: Exception) {
             Log.e(TAG, "VPN start failed", e)
+            VpnJournal.record(this, mode(this), "VPN: ошибка запуска · ${e.message ?: e.javaClass.simpleName}")
             cleanup()
             if (commandId == command) {
                 writeState(this, "error:" + (e.message ?: e.javaClass.simpleName), request)
@@ -315,6 +337,7 @@ class XrayVpnService : VpnService() {
                 val result = withContext(Dispatchers.IO) { runCatching { Vpncore.urlTest(url, 8_000) } }
                 val ms = result.getOrDefault(-1L)
                 if (ms >= 0) {
+                    VpnJournal.record(this@XrayVpnService, mode(this@XrayVpnService), "Проверка соединения: $ms мс")
                     writeTest(this@XrayVpnService, "ok:$ms")
                     return@launch
                 }
@@ -322,6 +345,7 @@ class XrayVpnService : VpnService() {
                 if (attempt + 1 < attempts) delay(1000)
             }
             writeTest(this@XrayVpnService, "fail:$last")
+            VpnJournal.record(this@XrayVpnService, mode(this@XrayVpnService), "Проверка соединения: $last")
         }
     }
 
@@ -375,6 +399,7 @@ class XrayVpnService : VpnService() {
         }
         Vpncore.setDefaultInterface(next?.name.orEmpty(), next?.index ?: -1)
         Log.i(TAG, "Uplink: ${next?.name ?: "offline"}")
+        VpnJournal.record(this, mode(this), "Сеть: ${next?.name ?: "нет подключения"}")
         val config = coreConfig ?: return
         if (activeCommand != command) return
         clearTest()
@@ -395,6 +420,7 @@ class XrayVpnService : VpnService() {
             true
         } catch (e: Exception) {
             Log.e(TAG, "VPN recovery failed", e)
+            VpnJournal.record(this, mode(this), "VPN: ошибка восстановления · ${e.message ?: e.javaClass.simpleName}")
             cleanup()
             if (activeCommand == command) {
                 writeState(this, "error:" + (e.message ?: e.javaClass.simpleName), activeRequest)
@@ -440,7 +466,13 @@ class XrayVpnService : VpnService() {
         }
     }
 
-    override fun onRevoke() { main.post { stopVpn() } }
+    private fun stopReserveTransport() {
+        if (mode(this) == VpnMode.WDTT) runCatching {
+            startService(Intent(this, TunnelService::class.java).setAction("STOP"))
+        }
+    }
+
+    override fun onRevoke() { main.post { stopReserveTransport(); stopVpn() } }
 
     override fun onDestroy() {
         ++command

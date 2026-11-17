@@ -174,6 +174,113 @@ iCloud, App Store, обновления	iCloud, App Store, updates
 По одному в строке: сайт (example.ru — вместе с поддоменами), IP-адрес или подсеть (10.0.0.0/8).	One per line: a website (example.ru — including subdomains), an IP address or a subnet (10.0.0.0/8).
 Сайтов: %s, адресов: %s	Websites: %s, addresses: %s
 Пинг — время запроса через сервер по уже открытому соединению (как в v2rayNG и NekoBox), а не ICMP.	Ping is the time of a request through the server over an already open connection (as in v2rayNG and NekoBox), not ICMP.
+Интерфейс	Interface
+Переключение вкладок свайпом	Swipe to switch tabs
+Все через VPN	All through VPN
+Все кроме выбранных	All except selected
+Маршрутизация для основного и резервного VPN	Routing for both primary and backup VPN
+Рекомендуемые приложения не найдены	No recommended apps found
+Рекомендуемые приложения отмечены: %s	Recommended apps selected: %s
+Выбрать рекомендуемые	Select recommended apps
+Очистить выбор	Clear selection
+Приложения не найдены	No apps found
+Очистить выбор приложений?	Clear the app selection?
+Поиск приложений	Search apps
+Очистить поиск	Clear search
+Подключено	Connected
+Отключено	Disconnected
+потоков	streams
+Подписка Lite 404	Lite 404 subscription
+Подключение	Connection
+Приложение	App
+Маршрутизация и свои списки	Routing and custom lists
+Потоки, локальная сеть и свои списки	Streams, local network, and custom lists
+Сеть и пинг	Network and ping
+Способ замера и проверка соединения	Ping method and connection checks
+Автоподключение	Auto-connect
+Запуск приложения и загрузка телефона	App launch and device startup
+Жесты, виброотклик и облегчённый режим	Gestures, haptics, and lightweight mode
+Темы	Themes
+Цвет, AMOLED и размер текста	Color, AMOLED, and text size
+Журнал	Log
+Основной и резервный VPN	Primary and backup VPN
+Обновления	Updates
+Приложение и ядро	App and core
+Сайты и адреса	Sites and addresses
+IPv4-адреса и подсети	IPv4 addresses and subnets
+Облегчённый режим	Lightweight mode
+Убирает Liquid Glass, свечение и анимации иконок.	Removes Liquid Glass, glow, and icon animations.
+Виброотклик	Haptic feedback
+Умная маршрутизация не настроена на сервере	Smart routing is unavailable on the server
+Количество потоков	Number of streams
+По одному IPv4-адресу или подсети в строке. Правила «Через VPN» имеют приоритет.	Enter one IPv4 address or subnet per line. Through VPN rules take precedence.
+Напрямую	Direct
+Через VPN	Through VPN
+Пропущены неверные адреса: %s	Invalid addresses skipped: %s
+Способ пинга серверов	Server ping method
+HTTPS · рекомендуется	HTTPS · recommended
+HTTPS-запрос через сервер VPN	HTTPS request through the VPN server
+Время открытия соединения с портом сервера	Time to open a TCP connection to the server port
+HTTP-запрос через сервер VPN	HTTP request through the VPN server
+Работа в фоне разрешена	Background activity allowed
+Android ограничивает работу в фоне	Android restricts background activity
+При открытии приложения	On app launch
+При загрузке устройства	On device startup
+Подключается последний использованный VPN. Для запуска при загрузке заранее выдайте системное разрешение VPN.	Connects to the last VPN used. Grant Android VPN permission before enabling connection at startup.
+Акцентный цвет	Accent color
+Лайм	Lime
+Мята	Mint
+Лёд	Ice
+Ирис	Iris
+Персик	Peach
+Роза	Rose
+AMOLED-тема	AMOLED theme
+Размер текста	Text size
+Записывать журнал	Record logs
+Журнал скопирован	Log copied
+Отправить журнал	Share log
+Журнал пока пуст	The log is empty
+Запись журнала отключена	Logging is off
+Очистить журнал?	Clear the log?
+Отправить	Share
+Списки резервного VPN исключают все маршруты	The backup VPN lists exclude every route
+В списках резервного VPN слишком много отдельных маршрутов	The backup VPN lists produce too many routes
+Резервный VPN остановился	Backup VPN stopped
+Сеть и запуск	Network and startup
+Внешний вид	Appearance
+Обслуживание	Maintenance
+Жесты	Gestures
+Отклик	Feedback
+Производительность	Performance
+Правила	Rules
+Локальная сеть	Local network
+Производительность туннеля	Tunnel performance
+Автоматические проверки	Automatic checks
+Фон	Background
+Текст	Text
+HTTP GET · рекомендуется	HTTP GET · recommended
+Запрос через VPN-сервер с адресом проверки	Request to the test URL through the VPN server
+Прямой ICMP-запрос к серверу. Сервер может запрещать ответы.	Direct ICMP request to the server. The server may block replies.
+Домены, адреса и готовые категории	Domains, addresses, and categories
+Подключение отменено	Connection canceled
+Не удалось скачать правила маршрутизации	Could not download routing rules
+Не удалось запустить маршрутизацию резервного VPN	Could not start backup VPN routing
+Правила резервного VPN	Backup VPN rules
+Правила основного VPN	Primary VPN rules
+Сайты, IP-адреса и подсети — по одному в строке. Правила «Через VPN» имеют приоритет.	Enter one site, IP address, or subnet per line. Through VPN rules take precedence.
+Проверьте формат адресов	Check the address format
+Измеряем…	Measuring…
+Система	System
+Доступные языки	Available languages
+Идёт запись новых событий	Recording new events
+Запись отключена	Recording is off
+Ожидание событий	Waiting for events
+Журнал пуст	The log is empty
+Новые события появятся при подключении VPN	New events will appear when the VPN connects
+Включите запись, чтобы сохранить события подключения	Enable recording to save connection events
+Ядро VPN	VPN core
+Версия ядра	Core version
+Поддержка и исходники	Support and source code
 
 Закрыть программу	Quit
 Закрыть программу?	Quit the app?

@@ -23,10 +23,10 @@ class WdttApplication : Application() {
         I18n.init(this)
         // ядро Xray работает в отдельном процессе «:xray» — WireGuard и WDTT там не нужны
         if (getProcessName() != packageName) return
-        
-        
-        
-        
+
+
+
+
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             runCatching {
                 val backend = getBackend(this@WdttApplication)
@@ -38,17 +38,8 @@ class WdttApplication : Application() {
             }
         }
 
-        
-        val settingsStore = SettingsStore(this)
-        CoroutineScope(SupervisorJob() + Dispatchers.Main).launch {
-            try {
-                settingsStore.loggingEnabled.collect { enabled ->
-                    TunnelManager.isLoggingEnabled = enabled
-                }
-            } catch (e: Exception) {
-                Log.e("WdttApp", "Не удалось отслеживать флаг логирования: ${e.message}")
-            }
-        }
+
+        TunnelManager.isLoggingEnabled = VpnJournal.enabled(this, VpnMode.WDTT)
     }
 
     fun getBackend(context: Context): GoBackend {

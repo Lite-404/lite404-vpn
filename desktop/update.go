@@ -113,7 +113,9 @@ func parseVersion(s string) []int {
 
 // newerVersion — remote новее local. Сборки без номера версии (dev) не обновляются.
 func newerVersion(remote, local string) bool {
-	r, l := parseVersion(remote), parseVersion(local)
+	// A preview can upgrade to the next release, without replacing its UI with
+	// an older published build carrying the same base version.
+	r, l := parseVersion(remote), parseVersion(strings.SplitN(local, "-", 2)[0])
 	if r == nil || l == nil {
 		return false
 	}

@@ -5,7 +5,7 @@ echo === Fast Test Build (arm64-v8a only) ===
 echo.
 
 set "ROOT_DIR=%~dp0..\"
-set "GO_CLIENT_DIR=%ROOT_DIR%app\src\main\assets\android-client"
+set "GO_CLIENT_DIR=%ROOT_DIR%core\wdtt-client"
 set "ANDROID_JNILIBS=%ROOT_DIR%app\src\main\jniLibs"
 
 :: Find Android SDK/NDK

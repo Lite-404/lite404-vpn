@@ -9,6 +9,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -23,7 +24,7 @@ import (
 )
 
 const (
-	wdttWorkers = 27
+	wdttWorkers = 30
 	wdttPort    = 9000
 )
 
@@ -34,20 +35,25 @@ type LogLine struct {
 }
 
 type Wdtt struct {
-	mu        sync.Mutex
-	cmd       *exec.Cmd
-	stdin     io.WriteCloser
-	running   bool // туннель включён пользователем (в том числе пока клиент перезапускается)
-	active    int  // активных потоков
-	stats     string
-	logs      []LogLine
-	crashes   []time.Time
-	server    WdttServer
-	hash      string
-	startedAt time.Time
-	lastAct   time.Time
-	authFails int
-	exiting   chan struct{} // закрывается, когда остановленный процесс клиента завершился
+	mu         sync.Mutex
+	cmd        *exec.Cmd
+	stdin      io.WriteCloser
+	running    bool // туннель включён пользователем (в том числе пока клиент перезапускается)
+	active     int  // активных потоков
+	stats      string
+	logs       []LogLine
+	crashes    []time.Time
+	server     WdttServer
+	hash       string
+	startedAt  time.Time
+	lastAct    time.Time
+	authFails  int
+	workers    int
+	logging    bool
+	exiting    chan struct{} // закрывается, когда остановленный процесс клиента завершился
+	done       chan struct{}
+	watchStop  chan struct{}
+	generation uint64
 
 	onConfig func(conf string) // клиент выдал WireGuard-конфиг
 	onFatal  func(reason string)
@@ -57,6 +63,9 @@ var tsPrefix = regexp.MustCompile(`^\d{4}/\d{2}/\d{2}\s\d{2}:\d{2}:\d{2}(\.\d+)?
 var activeRe = regexp.MustCompile(`Активных:\s*(\d+)`)
 
 func (w *Wdtt) log(text string, isErr bool) {
+	if !w.logging {
+		return
+	}
 	w.logs = append(w.logs, LogLine{time.Now().UnixMilli(), text, isErr})
 	if len(w.logs) > 400 {
 		w.logs = w.logs[len(w.logs)-400:]
@@ -89,34 +98,45 @@ func wdttBinary() (string, error) {
 	return path, os.Rename(tmp, path)
 }
 
-func (w *Wdtt) Start(server WdttServer, hash string) error {
+func (w *Wdtt) Start(server WdttServer, hash string, workers int, onConfig func(string), onFatal func(string)) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.server, w.hash = server, hash
+	w.generation++
+	w.onConfig, w.onFatal = onConfig, onFatal
+	w.workers = min(max(workers, 1), 30)
 	w.logs, w.crashes, w.active, w.stats = nil, nil, 0, "Ожидание данных..."
 	w.running = true
-	w.log(fmt.Sprintf("[Основной] Хешей=1, Потоков=%d", wdttWorkers), false)
+	w.log(fmt.Sprintf("Потоков: %d", w.workers), false)
 	return w.spawnLocked()
 }
 
 func (w *Wdtt) spawnLocked() error {
+	if w.exiting != nil { // прошлый процесс ещё держит порт 9000
+		exiting, generation := w.exiting, w.generation
+		// The log reader must acquire w.mu before it can reach its sole Wait.
+		// Waiting while holding the mutex delayed every reconnect by 2.5s.
+		w.mu.Unlock()
+		select {
+		case <-exiting:
+		case <-time.After(2500 * time.Millisecond):
+		}
+		w.mu.Lock()
+		if w.generation != generation || !w.running || w.cmd != nil {
+			return nil
+		}
+		w.exiting = nil
+	}
 	bin, err := wdttBinary()
 	if err != nil {
 		w.running = false
 		return err
 	}
-	if w.exiting != nil { // прошлый процесс ещё держит порт 9000
-		select {
-		case <-w.exiting:
-		case <-time.After(2500 * time.Millisecond):
-		}
-		w.exiting = nil
-	}
 	killStaleClient()
 	cmd := exec.Command(bin,
 		"-peer", fmt.Sprintf("%s:%d", w.server.Host, w.server.Port),
 		"-vk", w.hash,
-		"-n", strconv.Itoa(wdttWorkers),
+		"-n", strconv.Itoa(w.workers),
 		"-listen", fmt.Sprintf("127.0.0.1:%d", wdttPort),
 		"-fingerprint", "firefox",
 		"-client-ids", "8202606,6287487",
@@ -127,6 +147,7 @@ func (w *Wdtt) spawnLocked() error {
 		"-captcha-mode", "auto",
 	)
 	cmd.Dir = filepath.Join(dataDir(), "bin")
+	cmd.Env = append(os.Environ(), "WDTT_EVENTS=1", "WDTT_TURN_CACHE="+filepath.Join(dataDir(), "wdtt-turn-cache.json"), "WDTT_NETWORK_HANDLE="+physicalNetworkKey())
 	hideWindow(cmd)
 	stdin, _ := cmd.StdinPipe()
 	out, _ := cmd.StdoutPipe()
@@ -137,13 +158,15 @@ func (w *Wdtt) spawnLocked() error {
 	}
 	os.WriteFile(filepath.Join(dataDir(), "wdtt.pid"), []byte(strconv.Itoa(cmd.Process.Pid)), 0o600)
 	w.cmd, w.stdin = cmd, stdin
+	w.done = make(chan struct{})
+	w.watchStop = make(chan struct{})
 	w.startedAt, w.lastAct, w.authFails = time.Now(), time.Time{}, 0
-	go w.read(cmd, out)
-	go w.watchdog(cmd)
+	go w.read(cmd, out, w.done, w.onConfig)
+	go w.watchdog(cmd, w.watchStop)
 	return nil
 }
 
-func (w *Wdtt) read(cmd *exec.Cmd, out io.Reader) {
+func (w *Wdtt) read(cmd *exec.Cmd, out io.Reader, done chan struct{}, onConfig func(string)) {
 	sc := bufio.NewScanner(out)
 	sc.Buffer(make([]byte, 64<<10), 1<<20)
 	var conf strings.Builder
@@ -158,14 +181,17 @@ func (w *Wdtt) read(cmd *exec.Cmd, out io.Reader) {
 			continue
 		}
 		switch {
+		case strings.HasPrefix(line, "__WDTT_EVENT__|"):
+			w.handleEvent(cmd, line, onConfig)
+			continue
 		case strings.Contains(raw, "╔") && strings.Contains(raw, "WireGuard"):
 			collecting = true
 			conf.Reset()
 			continue
 		case collecting && strings.Contains(raw, "╚"):
 			collecting = false
-			if w.onConfig != nil {
-				go w.onConfig(conf.String())
+			if onConfig != nil {
+				go onConfig(conf.String())
 			}
 			continue
 		case collecting:
@@ -176,7 +202,7 @@ func (w *Wdtt) read(cmd *exec.Cmd, out io.Reader) {
 		case strings.HasPrefix(line, "CAPTCHA_SOLVE|"):
 			// окна WebView нет — отвечаем сразу, клиент продолжит своим решателем
 			w.mu.Lock()
-			if w.stdin != nil {
+			if w.cmd == cmd && w.stdin != nil {
 				io.WriteString(w.stdin, "CAPTCHA_RESULT|error:webview unavailable on desktop\n")
 			}
 			w.log("[КАПЧА] Решение капчи встроенным решателем...", false)
@@ -185,13 +211,18 @@ func (w *Wdtt) read(cmd *exec.Cmd, out io.Reader) {
 		case strings.HasPrefix(line, "__WDTT_EVENT__"), line == "":
 			continue
 		}
-		w.handleLine(line)
+		w.handleLine(cmd, line)
 	}
 	cmd.Wait()
+	close(done) // one owner of Wait; signal before taking w.mu (spawn waits under it)
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if w.cmd != cmd {
 		return
+	}
+	if w.watchStop != nil {
+		close(w.watchStop)
+		w.watchStop = nil
 	}
 	w.cmd, w.stdin, w.active = nil, nil, 0
 	if !w.running {
@@ -216,22 +247,26 @@ func (w *Wdtt) read(cmd *exec.Cmd, out io.Reader) {
 	}
 	w.crashes = append(w.crashes, now)
 	w.log("⚠ Клиент WDTT завершился — перезапуск...", true)
+	generation := w.generation
 	go func() {
 		time.Sleep(2 * time.Second)
 		w.mu.Lock()
 		defer w.mu.Unlock()
-		if w.running && w.cmd == nil {
+		if w.running && w.cmd == nil && w.generation == generation {
 			w.spawnLocked()
 		}
 	}()
 }
 
-func (w *Wdtt) handleLine(line string) {
+func (w *Wdtt) handleLine(cmd *exec.Cmd, line string) {
 	lower := strings.ToLower(line)
 	isErr := strings.Contains(line, "Ошибка") || strings.Contains(lower, "error") || strings.Contains(line, "FAIL") ||
 		strings.Contains(lower, "timeout") || strings.Contains(lower, "refused") || strings.Contains(line, "FATAL_AUTH")
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if w.cmd != cmd {
+		return
+	}
 	switch {
 	case strings.Contains(line, "FATAL_AUTH") && !strings.Contains(line, "DTLS timeout") && !strings.Contains(line, "WRAP_AUTH_TIMEOUT"):
 		reason := "Ошибка авторизации"
@@ -283,8 +318,12 @@ func (w *Wdtt) handleLine(line string) {
 
 // watchdog — как на Android: процесс без потоков 90 с — перезапуск; 3 неподтверждённых handshake
 // за первые 30 с без единого активного потока — неверный пароль.
-func (w *Wdtt) watchdog(cmd *exec.Cmd) {
-	time.Sleep(10 * time.Second)
+func (w *Wdtt) watchdog(cmd *exec.Cmd, stop <-chan struct{}) {
+	select {
+	case <-stop:
+		return
+	case <-time.After(10 * time.Second):
+	}
 	var zeroSince time.Time
 	for {
 		w.mu.Lock()
@@ -311,17 +350,22 @@ func (w *Wdtt) watchdog(cmd *exec.Cmd) {
 			return
 		}
 		w.mu.Unlock()
-		time.Sleep(5 * time.Second)
+		select {
+		case <-stop:
+			return
+		case <-time.After(5 * time.Second):
+		}
 	}
 }
 
 func (w *Wdtt) restartLocked() {
 	w.killLocked()
+	generation := w.generation
 	go func() {
 		time.Sleep(2 * time.Second)
 		w.mu.Lock()
 		defer w.mu.Unlock()
-		if w.running && w.cmd == nil {
+		if w.running && w.cmd == nil && w.generation == generation {
 			w.spawnLocked()
 		}
 	}()
@@ -339,6 +383,10 @@ func (w *Wdtt) RestartTransport() {
 
 func (w *Wdtt) killLocked() {
 	cmd := w.cmd
+	if w.watchStop != nil {
+		close(w.watchStop)
+		w.watchStop = nil
+	}
 	w.cmd, w.active = nil, 0
 	if w.stdin != nil {
 		io.WriteString(w.stdin, "STOP\n")
@@ -346,10 +394,9 @@ func (w *Wdtt) killLocked() {
 		w.stdin = nil
 	}
 	if cmd != nil && cmd.Process != nil {
-		done := make(chan struct{})
+		done := w.done
 		w.exiting = done
 		go func() {
-			go func() { cmd.Process.Wait(); close(done) }()
 			select {
 			case <-done:
 			case <-time.After(1500 * time.Millisecond):
@@ -361,8 +408,54 @@ func (w *Wdtt) killLocked() {
 }
 
 func (w *Wdtt) stopLocked() {
+	w.generation++
 	w.running = false
 	w.killLocked()
+}
+
+func (w *Wdtt) handleEvent(cmd *exec.Cmd, line string, onConfig func(string)) {
+	parts := strings.SplitN(line, "|", 3)
+	if len(parts) != 3 {
+		return
+	}
+	var event struct {
+		Active  int    `json:"active"`
+		Up      int64  `json:"bytes_up"`
+		Down    int64  `json:"bytes_down"`
+		Config  string `json:"config"`
+		Message string `json:"message"`
+		Fatal   bool   `json:"fatal"`
+	}
+	if parts[2] != "" && json.Unmarshal([]byte(parts[2]), &event) != nil {
+		return
+	}
+	w.mu.Lock()
+	if w.cmd != cmd {
+		w.mu.Unlock()
+		return
+	}
+	switch parts[1] {
+	case "STATS":
+		w.active = event.Active
+		w.stats = fmt.Sprintf("Активных: %d | Трафик: %.2f МБ", event.Active, float64(event.Up+event.Down)/(1024*1024))
+		if event.Active > 0 {
+			w.lastAct = time.Now()
+			w.authFails = 0
+		}
+	case "CONFIG":
+		if event.Config != "" && onConfig != nil {
+			go onConfig(event.Config)
+		}
+	case "ERROR":
+		w.log(event.Message, true)
+		if event.Fatal {
+			w.stopLocked()
+			if w.onFatal != nil {
+				go w.onFatal(event.Message)
+			}
+		}
+	}
+	w.mu.Unlock()
 }
 
 func (w *Wdtt) Stop() {

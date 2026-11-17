@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -10,6 +11,7 @@ type Stats struct {
 	TotalBytesUp      atomic.Int64
 	TotalBytesDown    atomic.Int64
 	ActiveConnections atomic.Int32
+	eventMu           sync.Mutex
 }
 
 func NewStats() *Stats {

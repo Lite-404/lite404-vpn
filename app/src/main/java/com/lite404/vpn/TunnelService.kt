@@ -37,8 +37,8 @@ class TunnelService : Service() {
     private var wifiLock: WifiManager.WifiLock? = null
     private var updateJob: Job? = null
     private var lastNotificationText: String? = null
-    
-    
+
+
     private var connectivityManager: ConnectivityManager? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     // Сеть, через которую сейчас идёт туннель (Wi-Fi или мобильная); null — пропала
@@ -52,7 +52,7 @@ class TunnelService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        
+
         acquireWakeLock()
         setupNetworkCallback()
     }
@@ -109,7 +109,7 @@ class TunnelService : Service() {
     private fun restoreTunnel() {
         val notification = createNotification(tr("Восстановление соединения..."))
         startPersistentForeground(notification)
-        
+
         val appContext = applicationContext
         TunnelManager.scope.launch {
             try {
@@ -154,8 +154,8 @@ class TunnelService : Service() {
         acquireWakeLock()
         acquireWifiLock()
 
-        
-        
+
+
         CaptchaWebViewManager.onTunnelStart(applicationContext)
 
         TunnelManager.start(this, params)
@@ -168,7 +168,7 @@ class TunnelService : Service() {
         // остановлен по-настоящему — после перезапуска процесса системой не восстанавливать
         Prefs(this).let { if (it.desiredMode == "wdtt") it.desiredMode = "" }
 
-        
+
         CaptchaWebViewManager.onTunnelStop()
 
         TunnelManager.stop()
@@ -194,6 +194,7 @@ class TunnelService : Service() {
         }
         lastNetwork = currentNetwork
         TunnelManager.networkAvailable = currentNetwork != null
+        TunnelManager.underlyingNetworkHandle = currentNetwork?.networkHandle
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
                 if (networkCallback === this && network != currentNetwork) onNetworkAvailable(network)
@@ -218,6 +219,7 @@ class TunnelService : Service() {
         lastNetwork = network
         lostNetwork = null
         TunnelManager.networkAvailable = true
+        TunnelManager.underlyingNetworkHandle = network.networkHandle
         if (isTunnelPaused) {
             networkJob?.cancel()
             isTunnelPaused = false
@@ -254,6 +256,7 @@ class TunnelService : Service() {
     private fun onNetworkLost(network: Network) {
         if (network != currentNetwork) return
         currentNetwork = null
+        TunnelManager.underlyingNetworkHandle = null
         lostNetwork = network
         TunnelManager.networkAvailable = false
         networkJob?.cancel()
@@ -290,9 +293,9 @@ class TunnelService : Service() {
         wakeLock = pm.newWakeLock(
             PowerManager.PARTIAL_WAKE_LOCK,
             "wdtt:tunnel_cpu"
-        ).apply { 
+        ).apply {
             setReferenceCounted(false)
-            acquire() 
+            acquire()
         }
     }
 
@@ -300,18 +303,18 @@ class TunnelService : Service() {
     private fun acquireWifiLock() {
         if (wifiLock?.isHeld == true) return
         val wm = applicationContext.getSystemService(WIFI_SERVICE) as WifiManager
-        
-        
-        
+
+
+
         val mode = if (Build.VERSION.SDK_INT >= 29) {
             WifiManager.WIFI_MODE_FULL_LOW_LATENCY
         } else {
             WifiManager.WIFI_MODE_FULL_HIGH_PERF
         }
-        
-        wifiLock = wm.createWifiLock(mode, "wdtt:wifi_perf").apply { 
+
+        wifiLock = wm.createWifiLock(mode, "wdtt:wifi_perf").apply {
             setReferenceCounted(false)
-            acquire() 
+            acquire()
         }
     }
 
@@ -332,11 +335,11 @@ class TunnelService : Service() {
     private fun startStatsUpdater() {
         updateJob?.cancel()
         updateJob = TunnelManager.scope.launch(Dispatchers.Main) {
-            
-            
-            
-            
-            
+
+
+
+
+
             var wasEverUp = false
             var downChecks = 0
             val helper = runCatching { WireGuardHelper(applicationContext) }.getOrNull()
@@ -388,7 +391,7 @@ class TunnelService : Service() {
         ).apply {
             description = tr("Уведомление о работе туннеля")
             setShowBadge(false)
-            
+
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             setSound(null, null)
             enableVibration(false)
@@ -402,7 +405,7 @@ class TunnelService : Service() {
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
-        
+
         val stopIntent = PendingIntent.getService(
             this, if (actionName == "STOP") 1 else 2,
             Intent(this, TunnelService::class.java).apply { action = actionName },
@@ -418,12 +421,12 @@ class TunnelService : Service() {
             .setContentIntent(openIntent)
             .addAction(R.drawable.ic_stop, actionTitle, stopIntent)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_DEFAULT)
-            
+
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            
+
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
-            .setOnlyAlertOnce(true) 
-            .setSilent(true) 
+            .setOnlyAlertOnce(true)
+            .setSilent(true)
             .setShowWhen(false)
             .setUsesChronometer(false)
             .setWhen(0L)

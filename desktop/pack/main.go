@@ -45,7 +45,7 @@ const plist = `<?xml version="1.0" encoding="UTF-8"?>
 `
 
 // coreTags — части ядра sing-box-extended (как в core/boxcore/build-aar.sh): WireGuard на gvisor, uTLS/Reality.
-const coreTags = "with_gvisor,with_utls,with_wireguard,badlinkname,tfogo_checklinkname0"
+const coreTags = "purego,production,gtk3,with_gvisor,with_utls,with_wireguard,badlinkname,tfogo_checklinkname0"
 
 // patchedMod — go.mod программы, где ядро заменено копией с правками lite404 (подстановка домена,
 // как у Xray): core/boxcore/cmd/patchcore. Без неё ядро не примет конфиг.
@@ -189,26 +189,51 @@ func manifest(args []string) {
 }
 
 func main() {
+	if len(os.Args) < 2 {
+		panic("go run ./pack ВЕРСИЯ [ПАПКА_СБОРКИ] | manifest …")
+	}
 	if os.Args[1] == "manifest" {
 		manifest(os.Args[2:])
 		return
 	}
 	version := os.Args[1]
+	outDir := "dist"
+	if len(os.Args) > 2 {
+		outDir = os.Args[2]
+	}
 	prepare()
 	readme, _ := os.ReadFile("README.txt")
-	os.MkdirAll("dist/bin", 0o755)
-	tmp := func(name string) string { return filepath.Join("dist", "bin", name) }
+	binDir := filepath.Join(outDir, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		panic(err)
+	}
+	var temporary []string
+	tmp := func(name string) string {
+		path := filepath.Join(binDir, name)
+		temporary = append(temporary, path)
+		return path
+	}
 	readmeEntry := func(prefix string) entry { return entry{name: prefix + "README.txt", data: readme} }
 
 	exe := build("windows", "amd64", tmp("lite404.exe"), version)
-	writeZip(fmt.Sprintf("dist/Lite404-VPN-windows-x64.zip"), []entry{
+	wintun, err := os.ReadFile("runtime/windows/wintun.dll")
+	if err != nil {
+		panic("нет официального Wintun runtime: " + err.Error())
+	}
+	wintunLicense, err := os.ReadFile("runtime/windows/WINTUN-LICENSE.txt")
+	if err != nil {
+		panic(err)
+	}
+	writeZip(filepath.Join(outDir, "Lite404-VPN-windows-x64.zip"), []entry{
 		{name: "Lite404 VPN/Lite404 VPN.exe", data: exe}, readmeEntry("Lite404 VPN/"),
+		{name: "Lite404 VPN/wintun.dll", data: wintun},
+		{name: "Lite404 VPN/WINTUN-LICENSE.txt", data: wintunLicense},
 	})
 	for _, arch := range []string{"amd64", "arm64"} {
 		bin := build("linux", arch, tmp("lite404-linux-"+arch), version)
 		label := map[string]string{"amd64": "x64", "arm64": "arm64"}[arch]
 		dir := "lite404-vpn/"
-		writeTarGz(fmt.Sprintf("dist/Lite404-VPN-linux-%s.tar.gz", label), []entry{
+		writeTarGz(filepath.Join(outDir, fmt.Sprintf("Lite404-VPN-linux-%s.tar.gz", label)), []entry{
 			{name: dir + "lite404-vpn", data: bin, exec: true}, readmeEntry(dir),
 		})
 	}
@@ -216,14 +241,18 @@ func main() {
 		bin := build("darwin", arch, tmp("lite404-darwin-"+arch), version)
 		label := map[string]string{"amd64": "intel", "arm64": "apple-silicon"}[arch]
 		app := "Lite404 VPN.app/Contents/"
-		writeZip(fmt.Sprintf("dist/Lite404-VPN-macos-%s.zip", label), []entry{
+		bundleVersion := strings.TrimPrefix(strings.SplitN(version, "-", 2)[0], "v")
+		writeZip(filepath.Join(outDir, fmt.Sprintf("Lite404-VPN-macos-%s.zip", label)), []entry{
 			{name: app + "MacOS/lite404", data: bin, exec: true},
-			{name: app + "Info.plist", data: []byte(fmt.Sprintf(plist, version, version))},
+			{name: app + "Info.plist", data: []byte(fmt.Sprintf(plist, bundleVersion, bundleVersion))},
 			readmeEntry(""),
 		})
 	}
-	os.RemoveAll("dist/bin")
-	list, _ := os.ReadDir("dist")
+	for _, path := range temporary {
+		os.Remove(path)
+	}
+	os.Remove(binDir)
+	list, _ := os.ReadDir(outDir)
 	for _, e := range list {
 		if st, err := e.Info(); err == nil && strings.HasPrefix(e.Name(), "Lite404-VPN-") {
 			fmt.Printf("%-48s %5.1f МБ\n", e.Name(), float64(st.Size())/1e6)

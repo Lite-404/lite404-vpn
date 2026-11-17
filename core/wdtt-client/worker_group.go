@@ -12,8 +12,9 @@ import (
 )
 
 const (
-	workersPerGroup  = 9
-	defaultCycleSecs = 36000
+	workersPerGroup        = 9
+	credentialStreamStride = 100
+	defaultCycleSecs       = 36000
 )
 
 func WorkerGroup(
@@ -63,8 +64,13 @@ func WorkerGroup(
 	}
 	log.Printf("[ГРУППА #%d] Запрос кредов (хеш: %s...)", groupID, shortHash)
 
-	credStreamID := groupID * 100
-	creds, ok := getGroupCreds(ctx, groupID, hash, credStreamID)
+	credStreamID := groupID * credentialStreamStride
+	var afterFirstAttempt func()
+	if managedClient && signalCreds != nil {
+		// Release the next group even if this group has to retry.
+		afterFirstAttempt = func() { close(signalCreds) }
+	}
+	creds, ok := getGroupCreds(ctx, groupID, hash, credStreamID, afterFirstAttempt)
 	if !ok {
 		return
 	}
@@ -89,7 +95,7 @@ func WorkerGroup(
 		}
 
 		getStreamCache(credStreamID).invalidate(credStreamID)
-		u, p, urls, refreshErr := GetCreds(ctx, hash, credStreamID)
+		u, p, urls, refreshErr := GetCreds(ctx, hash, credStreamID, false)
 		if refreshErr != nil {
 			log.Printf("[TURN] Не удалось обновить креды после %s: %v", reason, refreshErr)
 			return false
@@ -103,7 +109,7 @@ func WorkerGroup(
 		return true
 	}
 
-	if signalCreds != nil {
+	if !managedClient && signalCreds != nil {
 		go func() {
 			time.Sleep(2 * time.Second)
 			close(signalCreds)
@@ -118,7 +124,20 @@ func WorkerGroup(
 		}
 	}
 
-	for _, wid := range workerIDs {
+	workerInterval := 200 * time.Millisecond
+	if managedClient {
+		workerInterval = 30 * time.Millisecond
+	}
+	for i, wid := range workerIDs {
+		if i > 0 {
+			select {
+			case <-time.After(workerInterval):
+			case <-ctx.Done():
+			}
+		}
+		if ctx.Err() != nil {
+			break
+		}
 		wg.Add(1)
 
 		go func(wid int) {
@@ -126,6 +145,7 @@ func WorkerGroup(
 
 			shouldGetConfig := getConfig
 			attempt := 0
+			quotaRetried := false
 
 			for {
 				if ctx.Err() != nil {
@@ -163,6 +183,19 @@ func WorkerGroup(
 					}
 					errStr := sessErr.Error()
 					errStrLower := strings.ToLower(errStr)
+					quota := strings.Contains(errStrLower, "turn квота")
+					if managedClient && quota && !quotaRetried {
+						// VK can still count a just-closed allocation against the limit.
+						// Give that lease a moment before replacing valid credentials.
+						quotaRetried = true
+						select {
+						case <-time.After(1250*time.Millisecond + time.Duration(rand.Intn(250))*time.Millisecond):
+						case <-ctx.Done():
+							return
+						}
+						continue
+					}
+					quotaRetried = false
 
 					turnAllocAttrMissing := strings.Contains(errStrLower, "turn allocate") &&
 						strings.Contains(errStrLower, "attribute not found")
@@ -221,7 +254,6 @@ func WorkerGroup(
 			}
 		}(wid)
 
-		time.Sleep(200 * time.Millisecond)
 	}
 
 	if signalSpawn != nil {
@@ -238,9 +270,12 @@ func WorkerGroup(
 // креды, и при быстром переподключении VK часто отвечает капчей/flood control на 2-й и 3-й запрос —
 // группы 2 и 3 умирали (а 3-я ждёт сигнала от 2-й и даже не начинала), поэтому оставалось ровно 9 потоков.
 // Теперь временные ошибки повторяются с нарастающей паузой; фатальна только недоступность звонка (мёртвый хеш).
-func getGroupCreds(ctx context.Context, groupID int, hash string, credStreamID int) (*Credentials, bool) {
+func getGroupCreds(ctx context.Context, groupID int, hash string, credStreamID int, afterFirstAttempt func()) (*Credentials, bool) {
 	for attempt := 1; ; attempt++ {
-		user, pass, turnURLs, err := GetCreds(ctx, hash, credStreamID)
+		user, pass, turnURLs, err := GetCreds(ctx, hash, credStreamID, attempt == 1)
+		if attempt == 1 && afterFirstAttempt != nil {
+			afterFirstAttempt()
+		}
 		if err == nil {
 			return &Credentials{User: user, Pass: pass, TurnURLs: turnURLs, CacheStreamID: credStreamID}, true
 		}

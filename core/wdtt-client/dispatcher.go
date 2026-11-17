@@ -38,6 +38,35 @@ const (
 type WorkerSlot struct {
 	ID     int
 	SendCh chan []byte
+	mu     sync.Mutex
+	closed bool
+}
+
+func (w *WorkerSlot) enqueue(pkt []byte) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.closed {
+		return false
+	}
+	select {
+	case w.SendCh <- pkt:
+		return true
+	default:
+		return false
+	}
+}
+
+func (w *WorkerSlot) retire() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.closed {
+		return
+	}
+	w.closed = true
+	close(w.SendCh)
+	for pkt := range w.SendCh {
+		putPktBuf(pkt)
+	}
 }
 
 type Dispatcher struct {
@@ -86,10 +115,13 @@ func (d *Dispatcher) Register(w *WorkerSlot) {
 	copy(newWorkers, *oldWorkers)
 	newWorkers[len(*oldWorkers)] = w
 	d.workers.Store(&newWorkers)
+	d.publishWorkerCount(len(newWorkers))
 	log.Printf("[ДИСП] Воркер #%d зарегистрирован (всего: %d)", w.ID, len(newWorkers))
 }
 
 func (d *Dispatcher) Unregister(slot *WorkerSlot) {
+	// Readers holding an older worker snapshot must also stop routing here.
+	slot.retire()
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	oldWorkers := d.workers.Load()
@@ -100,7 +132,15 @@ func (d *Dispatcher) Unregister(slot *WorkerSlot) {
 		}
 	}
 	d.workers.Store(&newWorkers)
+	d.publishWorkerCount(len(newWorkers))
 	log.Printf("[ДИСП] Воркер #%d отключён (осталось: %d)", slot.ID, len(newWorkers))
+}
+
+func (d *Dispatcher) publishWorkerCount(count int) {
+	d.stats.ActiveConnections.Store(int32(count))
+	if managedClient {
+		emitStats(d.stats)
+	}
 }
 
 func (d *Dispatcher) readLoop() {
@@ -139,25 +179,21 @@ func (d *Dispatcher) readLoop() {
 		sent := false
 		idx := int(d.rrIndex.Load()) % nw
 
-		w := ws[idx]
-		select {
-		case w.SendCh <- pkt:
+		if ws[idx].enqueue(pkt) {
 			sent = true
 			count := d.rrCount.Add(1)
 			if count >= int32(chunkSize) {
 				d.rrIndex.Store(int32((idx + 1) % nw))
 				d.rrCount.Store(0)
 			}
-		default:
+		} else {
 
 			for i := 1; i < nw; i++ {
 				altIdx := (idx + i) % nw
-				select {
-				case ws[altIdx].SendCh <- pkt:
+				if ws[altIdx].enqueue(pkt) {
 					sent = true
 					d.rrIndex.Store(int32(altIdx))
 					d.rrCount.Store(1)
-				default:
 				}
 				if sent {
 					break

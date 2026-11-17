@@ -36,9 +36,11 @@ VPN-клиент для Android, Windows, macOS и Linux
 
 ## Компьютер (Windows, macOS, Linux)
 
-В [релизе](https://github.com/Lite-404/lite404-vpn/releases/latest) — архивы `Lite404-VPN-windows-x64.zip`, `-macos-apple-silicon.zip`, `-macos-intel.zip`, `-linux-x64.tar.gz`, `-linux-arm64.tar.gz` (имена без версии — прямые ссылки `releases/latest/download/<файл>` не меняются). Программа открывает окно в браузере, вход — тем же токеном; внутри — основной VPN (sing-box-extended) и резервный (клиент WDTT из `core/wdtt-client` встроен в программу, WireGuard работает внутри sing-box, прав администратора не нужно). При подключении включается системный прокси; для остальных программ — HTTP `127.0.0.1:10809` и SOCKS5 `127.0.0.1:10808`.
+В [релизе](https://github.com/Lite-404/lite404-vpn/releases/latest) — архивы `Lite404-VPN-windows-x64.zip`, `-macos-apple-silicon.zip`, `-macos-intel.zip`, `-linux-x64.tar.gz`, `-linux-arm64.tar.gz` (имена без версии — прямые ссылки `releases/latest/download/<файл>` не меняются). Клиент открывает собственное окно с боковым меню и треем, вход — тем же токеном. Внутри — основной VPN (sing-box-extended) и резервный (общее с Android ядро WDTT: до 30 потоков, быстрый запуск, обновление TURN и очистка соединений).
 
-Сборка (Go 1.27, исходники в `desktop/`): `cd desktop && go run ./pack 0.10.0` — соберёт клиент WDTT под все системы, встроит его и переводы и положит архивы в `desktop/dist/`.
+В «Настройки → Сеть и пинг» доступны TUN и системный прокси. TUN перехватывает трафик приложений; отдельный помощник запрашивает права администратора, создаёт интерфейс и убирает маршруты после отключения. В Windows официальный подписанный Wintun включён в сборку. Системный прокси работает без повышения прав: HTTP `127.0.0.1:10809`, SOCKS5 `127.0.0.1:10808`. Для Windows нужен WebView2; для Linux — GTK3, WebKitGTK 4.1 и polkit/pkexec для TUN. Подробности — в [desktop/README.txt](desktop/README.txt). macOS-сборки не подписаны и не нотарифицированы; запуск и TUN на физическом Mac пока не проверены.
+
+Сборка (Go 1.27, исходники в `desktop/`): `cd desktop && go run ./pack 0.10.5` — соберёт клиент WDTT под все системы, встроит его и переводы и положит архивы в `desktop/dist/`.
 
 ## Обновления
 

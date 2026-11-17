@@ -168,6 +168,11 @@ func getVKCredsViaVKCallsPath(ctx context.Context, link string, streamID int) (s
 				log.Printf("close response body: %s", closeErr)
 			}
 		}()
+		if managedClient {
+			if limit := vkHTTPRateLimit(httpResp); limit != nil {
+				return nil, newVKCallsFailure(step, vkCallsFailureVKAPI, limit)
+			}
+		}
 
 		body, err := io.ReadAll(httpResp.Body)
 		if err != nil {
@@ -177,6 +182,11 @@ func getVKCredsViaVKCallsPath(ctx context.Context, link string, streamID int) (s
 		var resp map[string]interface{}
 		if err := json.Unmarshal(body, &resp); err != nil {
 			return nil, newVKCallsFailure(step, vkCallsFailureDecode, fmt.Errorf("unmarshal JSON: %w, body: %s", err, truncateVKCallsLog(string(body), 200)))
+		}
+		if managedClient {
+			if limit := vkResponseRateLimit(resp); limit != nil {
+				return nil, newVKCallsFailure(step, vkCallsFailureVKAPI, limit)
+			}
 		}
 		return resp, nil
 	}

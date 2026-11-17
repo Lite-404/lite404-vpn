@@ -29,6 +29,9 @@ func TestNewerVersion(t *testing.T) {
 		{"0.9.0", "dev", false},
 		{"garbage", "0.8.0", false},
 		{"0.9", "0.8.0", false},
+		{"0.10.5", "0.10.4-preview", true},
+		{"0.10.4", "0.10.4-preview", false},
+		{"0.10.3", "0.10.4-preview", false},
 	}
 	for _, c := range cases {
 		if got := newerVersion(c.remote, c.local); got != c.want {

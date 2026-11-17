@@ -1,6 +1,6 @@
 // Lite404 VPN для компьютера — то же, что Android-приложение, с интерфейсом под ПК:
 // основной VPN (ядро sing-box-extended, конфиги в формате Xray) и резервный VPN (WDTT через звонки VK). Трафик идёт через локальный прокси
-// (SOCKS 10808 / HTTP 10809) и системный прокси; интерфейс — страница на 127.0.0.1:47404 в браузере.
+// (SOCKS 10808 / HTTP 10809) и системный прокси; интерфейс — собственное окно приложения.
 // Данные — по тому же токену, что и на телефоне.
 package main
 
@@ -16,7 +16,9 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -39,30 +41,39 @@ type Test struct {
 }
 
 type App struct {
-	mu       sync.Mutex
-	s        *Settings
-	cfg      *AppConfig
-	inst     *boxcore.Instance
-	instConf string // WireGuard-конфиг, на котором поднят Xray в режиме «Резерв»
-	mode     string // "" | xray | wdtt
-	phase    string // off | connecting | on | stopping
-	errText  string
-	notice   string
-	test     *Test
-	conn     int // индекс сервера (xray) или страны (wdtt)
-	since    time.Time
-	wdttUp   time.Time // момент, когда у резервного VPN появились активные потоки
-	tested   bool      // проверка соединения резервного VPN в этой сессии уже была
-	pings    map[int]int64
-	pinging  bool
-	loading  bool
-	proxyErr string
-	wdtt     *Wdtt
-	speedUp  int64
-	speedDn  int64
-	lastUp   int64
-	lastDn   int64
-	upd      Updater
+	mu          sync.Mutex
+	s           *Settings
+	cfg         *AppConfig
+	inst        *boxcore.Instance
+	instConf    string // WireGuard-конфиг, на котором поднят Xray в режиме «Резерв»
+	mode        string // "" | xray | wdtt
+	phase       string // off | connecting | on | stopping
+	errText     string
+	notice      string
+	test        *Test
+	conn        int // индекс сервера (xray) или страны (wdtt)
+	since       time.Time
+	wdttUp      time.Time // момент, когда у резервного VPN появились активные потоки
+	tested      bool      // проверка соединения резервного VPN в этой сессии уже была
+	pings       map[int]int64
+	pinging     bool
+	loading     bool
+	proxyErr    string
+	wdtt        *Wdtt
+	speedUp     int64
+	speedDn     int64
+	lastUp      int64
+	lastDn      int64
+	upd         Updater
+	journal     desktopJournal
+	generation  uint64
+	uiMu        sync.RWMutex
+	ui          desktopUI
+	uiReady     atomic.Bool
+	tun         *tunSession
+	tunStarting bool
+	tunCancel   chan struct{}
+	networkMode string // mode of the running session; preference applies on next connect
 }
 
 func (a *App) loadCached() {
@@ -122,17 +133,19 @@ func (a *App) refresh() error {
 
 // startProxy — поднять Xray с готовым конфигом и включить системный прокси. Под a.mu.
 func (a *App) startProxyLocked(cfg []byte, lan bool) error {
-	inst, err := startInstance(cfg)
+	if a.inst != nil {
+		a.inst.Close()
+		a.inst = nil
+	}
+	settings := *a.s
+	settings.NetworkMode = a.networkMode
+	inst, err := startConfiguredInstance(cfg, &settings)
 	if err != nil {
 		return err
 	}
-	old := a.inst
 	a.inst, a.lastUp, a.lastDn = inst, 0, 0
-	if old != nil {
-		old.Close()
-	}
 	a.proxyErr = ""
-	if a.s.SystemProxy {
+	if a.s.SystemProxy && a.networkMode != "tun" {
 		if perr := setSystemProxy(true, lan); perr != nil {
 			a.proxyErr = "Системный прокси не включился — укажите вручную HTTP 127.0.0.1:10809"
 		} else {
@@ -140,10 +153,20 @@ func (a *App) startProxyLocked(cfg []byte, lan bool) error {
 			a.s.save()
 		}
 	}
+	a.startTunAsyncLocked(lan)
 	return nil
 }
 
 func (a *App) stopProxyLocked() {
+	if a.tunCancel != nil {
+		close(a.tunCancel)
+		a.tunCancel = nil
+	}
+	if a.tun != nil {
+		a.tun.Close()
+		a.tun = nil
+	}
+	a.tunStarting = false
 	if a.s.ProxyActive {
 		setSystemProxy(false, false)
 		a.s.ProxyActive = false
@@ -158,6 +181,7 @@ func (a *App) stopProxyLocked() {
 
 // stopAll — выключить всё (оба режима). Под a.mu.
 func (a *App) stopAllLocked() {
+	a.generation++
 	a.wdtt.Stop()
 	a.stopProxyLocked()
 	a.mode, a.phase, a.test, a.notice = "", "off", nil, ""
@@ -175,9 +199,12 @@ func (a *App) connectXray(i int) error {
 		return errors.New(msg)
 	}
 	a.stopAllLocked()
+	a.networkMode = a.s.NetworkMode
 	server, profile, geoSrc, user := a.cfg.Xray[i], a.profile(), a.serverProfile(), a.s.Lists
+	generation := a.generation
 	a.mode, a.phase, a.conn, a.errText = "xray", "connecting", i, ""
 	a.s.Server = i
+	a.s.LastMode = "xray"
 	a.s.save()
 	a.mu.Unlock()
 
@@ -197,7 +224,7 @@ func (a *App) connectXray(i int) error {
 	}
 	cfg, err := BuildConfig(server, profile, *a.s.LanDirect, user, geo)
 	a.mu.Lock()
-	if a.mode != "xray" || a.conn != i { // пока готовились, нажали «Стоп» или выбрали другое
+	if a.mode != "xray" || a.conn != i || a.generation != generation { // подключение уже отменено или заменено
 		a.mu.Unlock()
 		return nil
 	}
@@ -210,7 +237,10 @@ func (a *App) connectXray(i int) error {
 		return err
 	}
 	a.phase, a.notice, a.since = "on", notice, time.Now()
-	testAfter := a.s.TestAfter
+	if a.networkMode == "tun" && a.tun == nil {
+		a.phase = "connecting"
+	}
+	testAfter := a.s.TestAfter && a.networkMode != "tun"
 	a.mu.Unlock()
 	if testAfter {
 		go a.runTest()
@@ -237,36 +267,59 @@ func (a *App) connectWdtt(i int) error {
 		return errors.New("Для вас нет серверов резервного VPN")
 	}
 	a.stopAllLocked()
+	a.networkMode = a.s.NetworkMode
 	server, hash := a.cfg.Wdtt[i], a.cfg.VKHash
+	generation := a.generation
+	geoProfile := a.serverProfile()
+	needsGeo := a.s.WdttRouting == "smart" || a.s.WdttLists.needsGeo()
+	workers := a.s.WdttWorkers
 	a.mode, a.phase, a.conn, a.errText, a.tested = "wdtt", "connecting", i, "", false
 	a.s.WdttServer = i
+	a.s.LastMode = "wdtt"
 	a.s.save()
 	a.mu.Unlock()
-	if err := a.wdtt.Start(server, hash); err != nil {
-		a.mu.Lock()
-		a.mode, a.phase, a.errText = "", "off", err.Error()
-		a.mu.Unlock()
-		return err
+	if needsGeo && geoProfile != nil {
+		if err := ensureGeo(geoProfile); err != nil {
+			a.mu.Lock()
+			if a.generation == generation {
+				a.mode, a.phase, a.errText = "", "off", err.Error()
+			}
+			a.mu.Unlock()
+			return err
+		}
 	}
 	a.mu.Lock()
-	if a.mode == "wdtt" {
-		a.phase, a.since = "on", time.Now()
+	defer a.mu.Unlock()
+	if a.generation != generation || a.mode != "wdtt" {
+		return nil
 	}
-	a.mu.Unlock()
+	if err := a.wdtt.Start(server, hash, workers, func(conf string) { a.onWdttConfig(conf, generation) }, func(reason string) { a.onWdttFatal(reason, generation) }); err != nil {
+		a.mode, a.phase, a.errText = "", "off", err.Error()
+		return err
+	}
+	if a.mode == "wdtt" {
+		a.phase, a.since = "connecting", time.Now()
+	}
 	return nil
 }
 
 // onWdttConfig — клиент WDTT выдал WireGuard-конфиг: поднимаем Xray с выходом WireGuard.
-func (a *App) onWdttConfig(conf string) {
+func (a *App) onWdttConfig(conf string, generation uint64) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.mode != "wdtt" || conf == a.instConf && a.inst != nil {
+	if a.mode != "wdtt" || a.generation != generation || conf == a.instConf && a.inst != nil {
 		return
 	}
 	server, err := WireGuardServer(conf)
 	var cfg []byte
 	if err == nil {
-		cfg, err = BuildConfig(server, nil, a.s.LanWdtt, UserLists{}, false)
+		var profile obj
+		if a.s.WdttRouting == "smart" {
+			profile = a.serverProfile()
+		}
+		// Geo files are prepared before starting the WDTT process.
+		_, geoErr := os.Stat(filepath.Join(geoDirPath, geoSite))
+		cfg, err = BuildConfig(server, profile, a.s.LanWdtt, a.s.WdttLists, geoErr == nil)
 	}
 	if err == nil {
 		err = a.startProxyLocked(cfg, a.s.LanWdtt)
@@ -280,10 +333,10 @@ func (a *App) onWdttConfig(conf string) {
 	a.instConf = conf
 }
 
-func (a *App) onWdttFatal(reason string) {
+func (a *App) onWdttFatal(reason string, generation uint64) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.mode != "wdtt" {
+	if a.mode != "wdtt" || a.generation != generation {
 		return
 	}
 	a.stopAllLocked()
@@ -336,7 +389,7 @@ func (a *App) pingAll() {
 		a.mu.Unlock()
 		return
 	}
-	servers, url := a.cfg.Xray, a.s.PingURL
+	servers, url, method := a.cfg.Xray, a.s.PingURL, a.s.PingMethod
 	a.pinging, a.pings = true, map[int]int64{}
 	a.mu.Unlock()
 	var wg sync.WaitGroup
@@ -344,7 +397,7 @@ func (a *App) pingAll() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			ms := Ping(s, url)
+			ms := pingMethod(s, url, method)
 			a.mu.Lock()
 			a.pings[i] = ms
 			a.mu.Unlock()
@@ -358,7 +411,11 @@ func (a *App) pingAll() {
 
 // tick — раз в секунду: скорость, момент появления потоков WDTT, проверка соединения резервного VPN.
 func (a *App) tick() {
+	var network networkTracker
 	for range time.Tick(time.Second) {
+		if network.changed(physicalNetworkKey(), time.Now()) {
+			a.wdtt.RestartTransport()
+		}
 		w := a.wdtt.State()
 		a.mu.Lock()
 		if a.inst != nil {
@@ -368,12 +425,27 @@ func (a *App) tick() {
 			}
 			a.lastUp, a.lastDn = up, dn
 		}
+		if a.s.JournalPrimary && a.s.LastMode != "wdtt" {
+			text := "Основной VPN · " + a.phase
+			if a.errText != "" {
+				text += " · " + a.errText
+			}
+			if a.test != nil {
+				text += " · " + strings.ReplaceAll(a.test.Text, "%s", a.test.Arg)
+			}
+			a.journal.record(text, a.errText != "")
+		}
 		runTest := false
 		if a.mode == "wdtt" {
+			if w.Active > 0 && a.inst != nil && (a.networkMode != "tun" || a.tun != nil) {
+				a.phase = "on"
+			} else {
+				a.phase = "connecting"
+			}
 			if w.Active > 0 && a.wdttUp.IsZero() {
 				a.wdttUp = time.Now()
 			}
-			if w.Active > 0 && a.inst != nil && !a.tested && a.s.TestAfter {
+			if a.phase == "on" && !a.tested && a.s.TestAfter {
 				a.tested, runTest = true, true
 			}
 		}
@@ -397,11 +469,17 @@ func (a *App) state() obj {
 		"systemProxy": a.s.SystemProxy, "pingUrl": a.s.PingURL, "pingUrls": pingURLs,
 		"pingOnOpen": a.s.PingOnOpen, "testAfter": a.s.TestAfter, "lang": a.s.Lang,
 		"lists": a.s.Lists, "readyLists": readyLists,
+		"wdttLists": a.s.WdttLists, "wdttRouting": a.s.WdttRouting, "wdttWorkers": a.s.WdttWorkers,
+		"pingMethod": a.s.PingMethod, "appMode": a.s.AppMode, "selectedApps": a.s.SelectedApps,
+		"connectOnOpen": a.s.ConnectOnOpen, "connectOnBoot": a.s.ConnectOnBoot, "appearance": a.s.Appearance,
+		"journalPrimary": a.s.JournalPrimary, "journalReserve": a.s.JournalReserve,
 		"pinging": a.pinging, "pings": a.pings, "proxyHint": proxyHint, "proxyError": a.proxyErr,
 		"socks": fmt.Sprintf("127.0.0.1:%d", socksPort), "http": fmt.Sprintf("127.0.0.1:%d", httpPort),
 		"wdttActive": w.Active, "wdttStats": w.Stats, "speedUp": a.speedUp, "speedDown": a.speedDn,
 		"wdttAvailable": len(wdttClient) > 0, "now": time.Now().UnixMilli(),
-		"update": a.upd.State(),
+		"update":       a.upd.State(),
+		"nativeWindow": a.nativeUI() != nil, "windowReady": a.uiReady.Load(),
+		"networkMode": a.s.NetworkMode, "tunActive": a.tun != nil, "tunStarting": a.tunStarting,
 	}
 	if a.phase == "on" && a.mode == "xray" {
 		st["since"] = a.since.UnixMilli()
@@ -444,6 +522,8 @@ func (a *App) handler() http.Handler {
 		w.Write(page)
 	})
 	mux.Handle("GET /i18n/", http.StripPrefix("/i18n/", http.FileServerFS(i18n)))
+	assets, _ := fs.Sub(webFS, "web/assets")
+	mux.Handle("GET /assets/", http.StripPrefix("/assets/", http.FileServerFS(assets)))
 	reply := func(w http.ResponseWriter, err error, extra obj) {
 		out := a.state()
 		for k, v := range extra {
@@ -466,12 +546,38 @@ func (a *App) handler() http.Handler {
 	}
 	num := func(m obj, k string) int { f, _ := m[k].(float64); return int(f) }
 	mux.HandleFunc("GET /api/state", func(w http.ResponseWriter, r *http.Request) { reply(w, nil, nil) })
+	mux.HandleFunc("POST /api/window/show", func(w http.ResponseWriter, r *http.Request) {
+		if ui := a.nativeUI(); ui != nil {
+			ui.Show()
+			reply(w, nil, nil)
+		} else {
+			reply(w, errors.New("Окно приложения не запущено"), nil)
+		}
+	})
+	mux.HandleFunc("POST /api/window/hide", func(w http.ResponseWriter, r *http.Request) {
+		if ui := a.nativeUI(); ui != nil {
+			ui.Hide()
+		}
+		reply(w, nil, nil)
+	})
+	mux.HandleFunc("POST /api/window/ready", func(w http.ResponseWriter, r *http.Request) {
+		if r.Context().Value(nativeAssetRequest{}) != true {
+			http.Error(w, "native window required", 403)
+			return
+		}
+		a.uiReady.Store(true)
+		reply(w, nil, nil)
+	})
 	mux.HandleFunc("GET /api/logs", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(a.wdtt.Logs())
+		json.NewEncoder(w).Encode(a.journalLines(r.URL.Query().Get("mode")))
 	})
 	mux.HandleFunc("POST /api/logs/clear", func(w http.ResponseWriter, r *http.Request) {
-		a.wdtt.ClearLogs()
+		if body(r)["mode"] == "wdtt" {
+			a.wdtt.ClearLogs()
+		} else {
+			a.journal.clear()
+		}
 		reply(w, nil, nil)
 	})
 	mux.HandleFunc("POST /api/token", func(w http.ResponseWriter, r *http.Request) {
@@ -538,6 +644,7 @@ func (a *App) handler() http.Handler {
 	mux.HandleFunc("POST /api/settings", func(w http.ResponseWriter, r *http.Request) {
 		m := body(r)
 		a.mu.Lock()
+		applyPreviewSettings(a, m)
 		if v, ok := m["lanDirect"].(bool); ok {
 			a.s.LanDirect = &v
 		}
@@ -580,7 +687,7 @@ func (a *App) handler() http.Handler {
 		}
 		if v, ok := m["systemProxy"].(bool); ok && v != a.s.SystemProxy {
 			a.s.SystemProxy = v
-			if a.inst != nil { // применяем сразу
+			if a.inst != nil && a.networkMode != "tun" { // применяем сразу в режиме прокси
 				lan := *a.s.LanDirect
 				if a.mode == "wdtt" {
 					lan = a.s.LanWdtt
@@ -596,6 +703,10 @@ func (a *App) handler() http.Handler {
 		a.s.save()
 		a.mu.Unlock()
 		reply(w, nil, nil)
+	})
+	mux.HandleFunc("GET /api/apps", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(runningApps())
 	})
 	mux.HandleFunc("POST /api/update/check", func(w http.ResponseWriter, r *http.Request) {
 		m, err := a.checkUpdate()
@@ -635,12 +746,23 @@ func (a *App) handler() http.Handler {
 }
 
 func (a *App) quit() {
+	if ui := a.nativeUI(); ui != nil {
+		ui.Quit()
+		return
+	}
 	a.disconnect()
 	time.Sleep(300 * time.Millisecond) // клиент WDTT получает STOP и выходит
 	os.Exit(0)
 }
 
 func main() {
+	if len(os.Args) == 3 && os.Args[1] == "--tun-worker" {
+		if err := runTunWorker(os.Args[2]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	if len(os.Args) > 1 && os.Args[1] == "--version" { // проверка новой версии при обновлении
 		fmt.Println(version)
 		return
@@ -661,14 +783,18 @@ func main() {
 	}
 	if err != nil { // уже запущено — просто открываем окно
 		if !afterUpdate {
-			openBrowser("http://" + uiAddr + "/")
+			client := &http.Client{Timeout: 3 * time.Second}
+			req, _ := http.NewRequest("POST", "http://"+uiAddr+"/api/window/show", nil)
+			req.Header.Set("X-Lite404", "1")
+			if resp, e := client.Do(req); e == nil {
+				resp.Body.Close()
+			}
 		}
 		return
 	}
 	cleanupUpdate()
 	a := &App{s: loadSettings(), conn: -1, phase: "off", wdtt: &Wdtt{}}
-	a.wdtt.onConfig = a.onWdttConfig
-	a.wdtt.onFatal = a.onWdttFatal
+	a.wdtt.logging = a.s.JournalReserve
 	a.loadCached()
 	killStaleClient()
 	if a.s.ProxyActive || ourProxyActive() { // прошлый запуск завершился аварийно — прокси на нас висит без Xray
@@ -684,6 +810,14 @@ func main() {
 			if a.s.PingOnOpen {
 				a.pingAll()
 			}
+			boot := len(os.Args) > 1 && os.Args[1] == "--autostart"
+			if a.s.ConnectOnOpen || boot && a.s.ConnectOnBoot {
+				if a.s.LastMode == "wdtt" {
+					a.connectWdtt(a.s.WdttServer)
+				} else {
+					a.connectXray(a.s.Server)
+				}
+			}
 		}()
 	}
 	go a.tick()
@@ -691,9 +825,29 @@ func main() {
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 	go func() { <-sig; a.quit() }()
 
-	if os.Getenv("LITE404_NO_BROWSER") == "" && !afterUpdate { // после обновления открытая страница подхватит новую версию сама
-		openBrowser("http://" + uiAddr + "/")
+	// Loopback is a control endpoint, never the application's user interface.
+	handler := a.handler()
+	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/api/") {
+			http.NotFound(w, r)
+			return
+		}
+		handler.ServeHTTP(w, r)
+	}), ReadHeaderTimeout: 10 * time.Second}
+	if os.Getenv("LITE404_NO_BROWSER") != "" {
+		log.Fatal(srv.Serve(ln))
+		return
 	}
-	srv := &http.Server{Handler: a.handler(), ReadHeaderTimeout: 10 * time.Second}
-	log.Fatal(srv.Serve(ln))
+	go func() {
+		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
+			log.Printf("control API: %v", err)
+			a.quit()
+		}
+	}()
+	defer srv.Close()
+	hidden := len(os.Args) > 1 && os.Args[1] == "--autostart"
+	if err := a.runNativeUI(hidden); err != nil {
+		log.Printf("native window: %v", err)
+		a.disconnect()
+	}
 }

@@ -9,7 +9,16 @@ import com.lite404.vpncore.Vpncore
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.net.InetSocketAddress
+import java.net.Socket
 import java.util.UUID
+import android.os.SystemClock
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+
+internal enum class PingMethod { HTTP_GET, ICMP, TCP }
 
 /**
  * Общее для ядра (sing-box-extended, библиотека vpncore): geo-файлы и пинг. Конфиги серверов приходят
@@ -46,8 +55,20 @@ object XrayCore {
      * Замер делает служба в процессе «:ping»; здесь читаем её файл и отдаём каждый результат
      * в [onResult] (в главном потоке) сразу, как сервер ответил, не дожидаясь остальных.
      */
-    suspend fun pingAll(ctx: Context, servers: List<XrayServer>, url: String, onResult: (Int, Long) -> Unit) = withContext(Dispatchers.IO) {
+    internal suspend fun pingAll(
+        ctx: Context, servers: List<XrayServer>, url: String, method: PingMethod, onResult: (Int, Long) -> Unit
+    ): Unit = withContext(Dispatchers.IO) {
         if (servers.isEmpty()) return@withContext
+        if (method != PingMethod.HTTP_GET) {
+            val slots = Semaphore(8)
+            servers.mapIndexed { i, server ->
+                async {
+                    val ms = slots.withPermit { if (method == PingMethod.ICMP) icmpPing(server) else tcpPing(server) }
+                    withContext(Dispatchers.Main) { onResult(i, ms) }
+                }
+            }.awaitAll()
+            return@withContext
+        }
         val app = ctx.applicationContext
         val id = UUID.randomUUID().toString().take(8)
         val file = PingService.resultFile(app.filesDir, id)
@@ -77,4 +98,41 @@ object XrayCore {
         }
         for (i in servers.indices) report(i, -1L)
     }
+
+    private fun endpoint(server: XrayServer): Pair<String, Int> {
+        val outbounds = JSONObject(server.config).getJSONArray("outbounds")
+        return (0 until outbounds.length()).firstNotNullOf { i ->
+            val settings = outbounds.optJSONObject(i)?.optJSONObject("settings")
+            val node = settings?.optJSONArray("vnext")?.optJSONObject(0)
+                ?: settings?.optJSONArray("servers")?.optJSONObject(0)
+            val host = node?.optString("address").orEmpty()
+            val port = node?.optInt("port") ?: 0
+            if (host.isNotBlank() && port in 1..65535) host to port else null
+        }
+    }
+
+    private fun tcpPing(server: XrayServer): Long = runCatching {
+        val endpoint = endpoint(server)
+        val address = InetSocketAddress(endpoint.first, endpoint.second)
+        Socket().use { socket ->
+            val started = SystemClock.elapsedRealtime()
+            socket.connect(address, 4_000)
+            (SystemClock.elapsedRealtime() - started).coerceAtLeast(1)
+        }
+    }.getOrDefault(-1)
+
+    private fun icmpPing(server: XrayServer): Long = runCatching {
+        val host = endpoint(server).first
+        check(!host.startsWith("-") && host.none { it.isWhitespace() })
+        val process = ProcessBuilder("/system/bin/ping", "-n", "-c", "1", "-W", "3", host)
+            .redirectErrorStream(true).start()
+        try {
+            if (!process.waitFor(4, java.util.concurrent.TimeUnit.SECONDS)) return@runCatching -1L
+            val result = process.inputStream.bufferedReader().readText()
+            Regex("""time[=<]\s*([0-9.]+)""").find(result)?.groupValues?.get(1)?.toDoubleOrNull()
+                ?.let { kotlin.math.ceil(it).toLong().coerceAtLeast(1) } ?: -1L
+        } finally {
+            process.destroyForcibly()
+        }
+    }.getOrDefault(-1)
 }

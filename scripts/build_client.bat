@@ -4,7 +4,7 @@ setlocal enabledelayedexpansion
 echo === Building Go client for Android (CGO) ===
 
 set "PROJECT_ROOT=%~dp0..\"
-set "GO_CLIENT_DIR=%PROJECT_ROOT%app\src\main\assets\android-client"
+set "GO_CLIENT_DIR=%PROJECT_ROOT%core\wdtt-client"
 set "ANDROID_JNILIBS=%PROJECT_ROOT%app\src\main\jniLibs"
 
 :: 1. Find Android SDK/NDK

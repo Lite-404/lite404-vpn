@@ -21,12 +21,12 @@ data class LogEntry(
     val key: String,
     val message: String,
     val count: Int = 1,
-    val priority: Int = 99, 
+    val priority: Int = 99,
     val isError: Boolean = false
 )
 
 object TunnelManager {
-    
+
     /** Любая неперехваченная ошибка в фоновых задачах WDTT пишется в журнал, а не роняет приложение. */
     private val crashGuard = kotlinx.coroutines.CoroutineExceptionHandler { _, e ->
         android.util.Log.e("TunnelManager", "ошибка в фоновой задаче", e)
@@ -40,10 +40,10 @@ object TunnelManager {
     private var watchdogJob: Job? = null
     private var restartJob: Job? = null
     private var wgHelper: WireGuardHelper? = null
-    
+
     private val startStopMutex = kotlinx.coroutines.sync.Mutex()
 
-    
+
     private var floodCount = 0
     private var mismatchCount = 0
     private var refusedCount = 0
@@ -51,21 +51,26 @@ object TunnelManager {
     private var wrapAuthTimeoutCount = 0
     var processStartedAtMs = 0L
     private var lastActiveAtMs = 0L
-    private var activeHashIndex = 0 
+    private var activeHashIndex = 0
     private var currentParams: TunnelParams? = null
     private var lastContext: Context? = null
-    private var forceRegenerateUA = false 
-    private var currentCaptchaMode = "wv" 
-    private var currentCaptchaSolveMethod = "auto" 
+    private var forceRegenerateUA = false
+    private var currentCaptchaMode = "wv"
+    private var currentCaptchaSolveMethod = "auto"
 
     @Volatile
-    var isLoggingEnabled = true
+    var isLoggingEnabled = false
+
+    @Volatile private var lastError: Pair<Int, String>? = null
+
+    fun lastConnectionError(): String? = lastError?.second
 
     val running = MutableStateFlow(false)
     /** Идёт запуск/перезапуск транспорта: running ещё false, но гасить службу нельзя. */
     val starting = MutableStateFlow(false)
     /** Есть ли сейчас сеть (ставит TunnelService). Без сети таймауты — не повод выключать туннель. */
     @Volatile var networkAvailable = true
+    @Volatile var underlyingNetworkHandle: Long? = null
     /** Туннель приостановлен из-за долгого отсутствия сети (процесс остановлен, но пользователь его не выключал). */
     val paused = MutableStateFlow(false)
     /** Пользователь (или ошибка) остановил туннель — плановые перезапуски больше не делаем. */
@@ -75,7 +80,8 @@ object TunnelManager {
     val config = MutableStateFlow<String?>(null)
     val stats = MutableStateFlow("Ожидание данных...")
     val activeWorkers = MutableStateFlow(0)
-    
+    val wireGuardReady = MutableStateFlow(false)
+
     val cooldownActive = MutableStateFlow(false)
     private var cooldownJob: Job? = null
 
@@ -83,7 +89,7 @@ object TunnelManager {
         unreadErrorCount.value = 0
     }
 
-    
+
 
     private fun handleTunnelEvent(event: TunnelEventParser.Event, now: Long, proc: Process): Boolean {
         when (event) {
@@ -138,7 +144,7 @@ object TunnelManager {
         }
     }
 
-    
+
     fun addDeployErrorLog(message: String) {
         val hash = message.hashCode().toString()
         updateLog("deploy_err_$hash", "[ДЕПЛОЙ] $message", 99, true)
@@ -150,7 +156,11 @@ object TunnelManager {
     }
 
     private fun updateLog(key: String, message: String, priority: Int, isError: Boolean = false) {
+        if (isError && priority <= (lastError?.first ?: Int.MAX_VALUE)) lastError = priority to message
         if (!isLoggingEnabled) return
+        if (key != "stats" && logs.value.none { it.key == key && it.message == message }) {
+            lastContext?.let { VpnJournal.record(it, VpnMode.WDTT, message) }
+        }
         if (isError) {
             val list = logs.value
             if (list.none { it.key == key }) {
@@ -162,19 +172,19 @@ object TunnelManager {
             val index = current.indexOfFirst { it.key == key }
 
             if (index != -1) {
-                
+
                 val entry = current[index]
                 current[index] = entry.copy(count = entry.count + 1, message = message, priority = priority, isError = isError)
             } else {
-                
+
                 current.add(LogEntry(key, message, 1, priority, isError))
             }
 
-            
-            
+
+
             val sorted = current.sortedWith(compareBy({ it.priority }, { if (it.isError) 1 else 0 }, { it.key }))
 
-            
+
             if (sorted.size > 100) sorted.takeLast(100) else sorted
         }
     }
@@ -187,12 +197,14 @@ object TunnelManager {
             try {
                 if (stopRequested) return@launch
                 if (running.value && !isSwitching) return@launch
-        
-                val appContext = context.applicationContext 
-                
+
+                val appContext = context.applicationContext
+
                 if (!isSwitching) {
+                    lastError = null
                     clearLogs()
                     config.value = null
+                    wireGuardReady.value = false
                     stats.value = "Ожидание данных..."
                     floodCount = 0
                     mismatchCount = 0
@@ -208,12 +220,12 @@ object TunnelManager {
                     currentCaptchaMode = params.captchaMode
                     currentCaptchaSolveMethod = params.captchaSolveMethod
                 }
-                
+
                 wgHelper = WireGuardHelper(appContext)
 
                 val targetHash = if (activeHashIndex == 0) params.vkHashes else params.secondaryVkHash
-                
-                
+
+
                 val hashList = targetHash
                     .split(Regex("[,\\s\\n]+"))
                     .map { it.trim() }
@@ -233,13 +245,13 @@ object TunnelManager {
 
                 val hashCount = hashList.size.coerceIn(1, 3)
                 val totalWorkers = params.workersPerHash.coerceIn(1, 128)
-                
+
                 val hashMode = if (activeHashIndex == 0) "Основной" else "Запасной"
                 updateLog("config_info", "[$hashMode] Хешей=$hashCount, Потоков=$totalWorkers", 1)
 
                 val binaryPath = context.applicationInfo.nativeLibraryDir + "/libclient.so"
                 val binaryFile = File(binaryPath)
-                
+
                 if (!binaryFile.exists()) {
                     updateLog("binary_error", "Ошибка: Бинарный файл не найден", 99, true)
                     return@launch
@@ -280,12 +292,14 @@ object TunnelManager {
                 val pb = ProcessBuilder(cmd)
                 pb.directory(context.filesDir)
                 pb.redirectErrorStream(true)
-                
+
                 val env = pb.environment()
                 env["LD_LIBRARY_PATH"] = context.applicationInfo.nativeLibraryDir
-                
-                
+
+
                 env["WDTT_EVENTS"] = "1"
+                env["WDTT_TURN_CACHE"] = File(context.noBackupFilesDir, "wdtt-turn-cache.json").absolutePath
+                underlyingNetworkHandle?.let { env["WDTT_NETWORK_HANDLE"] = it.toString() }
 
                 process = pb.start()
                 processStartedAtMs = System.currentTimeMillis()
@@ -333,7 +347,7 @@ object TunnelManager {
                     val msgPrefixReplaced = line.replace(Regex("^\\d{4}/\\d{2}/\\d{2}\\s\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?\\s"), "")
                     val lineTrim = msgPrefixReplaced.trim()
 
-                    
+
                     val event = TunnelEventParser.parse(lineTrim)
                     if (event != null && handleTunnelEvent(event, now, proc)) {
                         return@forEachLine
@@ -496,7 +510,7 @@ object TunnelManager {
                         lineTrim.contains("[КАПЧА] RJS:") -> {
                             var text = lineTrim.substringAfter("[КАПЧА] RJS:").trim()
                             text = text.replace(Regex("\\s*\\([^)]+\\)\\s*"), " ").trim()
-                            
+
                             val stableKey = when {
                                 text.contains("Загрузка") || text.contains("fetch") -> "captcha_rjs_1"
                                 text.contains("PoW") -> "captcha_rjs_2"
@@ -512,7 +526,7 @@ object TunnelManager {
                         lineTrim.contains("[КАПЧА] WBV:") -> {
                             var text = lineTrim.substringAfter("[КАПЧА] WBV:").trim()
                             text = text.replace(Regex("\\s*\\([^)]+\\)\\s*"), " ").trim()
-                            
+
                             val isErr = text.contains("Ошибка")
                             val stableKey = when {
                                 text.contains("Запрос") -> "captcha_wv_step_2"
@@ -552,7 +566,7 @@ object TunnelManager {
                             updateLog("dtls_ok", "[DTLS] Соединение установлено ✓", 1, false)
                         lineTrim.contains("Активна ✓") ->
                             updateLog("ready", "[READY] Туннель готов к работе ✓", 2, false)
-                        
+
                         isError -> {
                             val errorKey = when {
                                 lineTrim.contains("lookup login.vk.ru", true) -> "err_vk_dns"
@@ -619,9 +633,14 @@ object TunnelManager {
         scope.launch {
             startStopMutex.lock()
             try {
-                if (process === proc && !stopRequested && !paused.value) wgHelper?.startTunnel(config)
+                if (process !== proc || stopRequested || paused.value) return@launch
+                val helper = wgHelper ?: return@launch
+                wireGuardReady.value = false
+                helper.startTunnel(config)
+                wireGuardReady.value = process === proc && !stopRequested && !paused.value
             } catch (e: Exception) {
                 updateLog("vpn_start_error", "Ошибка запуска VPN: ${e.readableMessage()}", 99, true)
+                if (WdttRouter.enabled) handleCriticalError("Не удалось применить маршрутизацию: ${e.readableMessage()}")
             } finally {
                 startStopMutex.unlock()
             }
@@ -756,8 +775,15 @@ object TunnelManager {
         val proc = process
         process = null
         if (proc != null) {
-            try { proc.destroy() } catch (_: Exception) {}
-            try { proc.waitFor(500, java.util.concurrent.TimeUnit.MILLISECONDS) } catch (_: Exception) {}
+            runCatching {
+                proc.outputStream.write("STOP\n".toByteArray())
+                proc.outputStream.flush()
+                proc.waitFor(450, java.util.concurrent.TimeUnit.MILLISECONDS)
+            }
+            if (proc.isAlive) {
+                try { proc.destroy() } catch (_: Exception) {}
+                try { proc.waitFor(500, java.util.concurrent.TimeUnit.MILLISECONDS) } catch (_: Exception) {}
+            }
             if (proc.isAlive) {
                 try { proc.destroyForcibly() } catch (_: Exception) {}
                 try { proc.waitFor(1000, java.util.concurrent.TimeUnit.MILLISECONDS) } catch (_: Exception) {}
@@ -775,6 +801,7 @@ object TunnelManager {
         restartJob?.cancel()
         starting.value = false
         paused.value = false
+        wireGuardReady.value = false
         scope.launch {
             startStopMutex.lock()
             try {
@@ -797,6 +824,7 @@ object TunnelManager {
         restartJob?.cancel()
         starting.value = false
         paused.value = false
+        wireGuardReady.value = false
         startStopMutex.lock()
         try {
             withContext(Dispatchers.Main) {
@@ -817,7 +845,10 @@ object TunnelManager {
     fun reloadWireGuard() {
         if (running.value) {
             scope.launch {
-                wgHelper?.reloadTunnel()
+                val helper = wgHelper ?: return@launch
+                helper.reloadTunnel()
+                val up = helper.isTunnelUp()
+                wireGuardReady.value = running.value && !stopRequested && up
             }
         }
     }
