@@ -193,6 +193,9 @@ private fun SubscriptionCard(model: AppModel, onLogout: () -> Unit) {
         user?.let {
             val (label, tint) = subscriptionExpiry(it)
             Text(label, fontSize = 13.sp, color = tint)
+            if (it.queuedPeriods > 0) Text(tr("Текущий период до %s",
+                java.text.SimpleDateFormat("dd.MM.yyyy", java.util.Locale.US).format(java.util.Date(it.expiresAt))),
+                fontSize = 12.sp, color = Muted)
             if (it.devicesLimit > 0) Text(tr("Устройства") + " · " + tr("%s из %s", it.devices, it.devicesLimit), fontSize = 12.sp, color = Muted)
         }
         TextButton(onClick = onLogout, modifier = Modifier.align(Alignment.End)) {

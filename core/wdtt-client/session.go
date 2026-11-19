@@ -11,11 +11,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cbeuw/connutil"
 	"github.com/pion/dtls/v3"
 	"github.com/pion/dtls/v3/pkg/crypto/selfsign"
-	"github.com/pion/transport/v4/stdnet"
-	"github.com/pion/turn/v5"
 )
 
 const (
@@ -38,8 +35,9 @@ func dtlsParallelism() int {
 	return 3
 }
 
-func RunSession(
+func runPeerSession(
 	ctx context.Context,
+	lease *turnLease,
 	tp *TurnParams,
 	peer *net.UDPAddr,
 	d *Dispatcher,
@@ -50,187 +48,25 @@ func RunSession(
 	creds *Credentials,
 	deviceID, password string,
 	stats *Stats,
+	ready func(),
 ) (bool, error) {
 	configDelivered := false
 	sessCtx, sessCancel := context.WithCancelCause(ctx)
 	defer sessCancel(nil)
 
-	if len(creds.TurnURLs) == 0 {
-		return false, fmt.Errorf("нет TURN URL в учетных данных")
-	}
-	selectedURL := creds.TurnURLs[sessionID%len(creds.TurnURLs)]
-
-	urlhost, urlport, err := net.SplitHostPort(selectedURL)
+	relay, err := lease.openPeer(peer)
 	if err != nil {
-		return false, fmt.Errorf("разбор TURN URL %q: %w", selectedURL, err)
-	}
-	if tp.Host != "" {
-		urlhost = tp.Host
-	}
-	if tp.Port != "" {
-		urlport = tp.Port
-	}
-	turnAddr := net.JoinHostPort(urlhost, urlport)
-
-	resolved, err := net.ResolveUDPAddr("udp", turnAddr)
-	if err != nil {
-		return false, fmt.Errorf("резолв TURN: %w", err)
-	}
-	c, err := net.DialUDP("udp", nil, resolved)
-	if err != nil {
-		return false, fmt.Errorf("подключение TURN UDP: %w", err)
-	}
-	defer c.Close()
-	_ = c.SetReadBuffer(socketBufSize)
-	_ = c.SetWriteBuffer(socketBufSize)
-	turnConn := &connectedUDPConn{UDPConn: c, fail: sessCancel}
-
-	log.Printf("[СЕССИЯ #%d] TURN UDP (%s)", sessionID, turnAddr)
-
-	var addrFamily turn.RequestedAddressFamily
-	if peer.IP.To4() != nil {
-		addrFamily = turn.RequestedAddressFamilyIPv4
-	} else {
-		addrFamily = turn.RequestedAddressFamilyIPv6
-	}
-
-	// Pion's default stdnet.NewNet enumerates network interfaces through
-	// NETLINK_ROUTE. Some Huawei/Honor ROMs deny that operation to apps.
-	// The zero-value stdnet.Net provides everything this UDP client uses
-	// without performing the unnecessary interface enumeration.
-	tc, err := turn.NewClient(&turn.ClientConfig{
-		STUNServerAddr:         turnAddr,
-		TURNServerAddr:         turnAddr,
-		Conn:                   turnConn,
-		Net:                    new(stdnet.Net),
-		Username:               creds.User,
-		Password:               creds.Pass,
-		RequestedAddressFamily: addrFamily,
-		LoggerFactory:          &NullLoggerFactory{},
-	})
-	if err != nil {
-		return false, fmt.Errorf("TURN клиент: %w", err)
-	}
-	defer tc.Close()
-
-	if err = tc.Listen(); err != nil {
-		return false, fmt.Errorf("TURN Listen: %w", err)
-	}
-
-	relay, err := tc.Allocate()
-	if err != nil {
-		if isAuthError(err) {
-			handleAuthError(creds.CacheStreamID)
-		}
-		errStr := err.Error()
-		if strings.Contains(errStr, "Quota") || strings.Contains(errStr, "486") {
-			return false, fmt.Errorf("TURN квота: %w", err)
-		}
-		return false, fmt.Errorf("TURN Allocate: %w", err)
+		return false, err
 	}
 	defer relay.Close()
+	turnConn := lease.turnConn
+	stopLease := context.AfterFunc(lease.ctx, func() { sessCancel(context.Cause(lease.ctx)) })
+	defer stopLease()
 
-	getStreamCache(creds.CacheStreamID).errorCount.Store(0)
-
-	log.Printf("[СЕССИЯ #%d] Relay: %s", sessionID, relay.LocalAddr())
-
-	pipeA, pipeB := connutil.LimitedAsyncPacketPipe(relayPipeBuffer)
-	defer pipeA.Close()
-
-	var sessionWg sync.WaitGroup
-	sessionWg.Add(1)
-	go func() {
-		defer sessionWg.Done()
-		t := time.NewTicker(10 * time.Second)
-		defer t.Stop()
-		for {
-			select {
-			case <-sessCtx.Done():
-				return
-			case <-t.C:
-				tc.SendBindingRequest()
-			}
-		}
-	}()
-
-	var relayWg sync.WaitGroup
-	relayWg.Add(2)
-
+	transport := newWrappedPeer(relay, tp.WrapKey, tp.ObfsMode)
 	useWrap := len(tp.WrapKey) == wrapKeyLen
-
-	var obfsCfg *ObfsConfig
-	var obfsWriteState *ObfsState
-	if useWrap {
-		obfsCfg = NewObfsConfig(tp.ObfsMode)
-		obfsWriteState = NewObfsState()
-	}
-
-	stopRelay := context.AfterFunc(sessCtx, func() {
-		_ = relay.SetReadDeadline(time.Now())
-		_ = pipeA.Close()
-	})
-	defer stopRelay()
-
-	go func() {
-		defer relayWg.Done()
-		defer sessCancel(nil)
-
-		readBufLen := readBufSize + 80
-		buf := make([]byte, readBufLen)
-		plain := make([]byte, readBufSize)
-		for {
-			n, _, readErr := relay.ReadFrom(buf)
-			if readErr != nil {
-				sessCancel(fmt.Errorf("чтение TURN relay: %w", readErr))
-				return
-			}
-			payload := buf[:n]
-			if useWrap {
-				if !obfsIsRTPPacket(payload) {
-					log.Printf("[СЕССИЯ #%d] OBFS unwrap: unexpected packet (n=%d)", sessionID, n)
-					continue
-				}
-				m, wrapErr := obfsUnwrapPacket(tp.WrapKey, payload, plain)
-				if wrapErr != nil {
-					log.Printf("[СЕССИЯ #%d] OBFS unwrap: %v (n=%d)", sessionID, wrapErr, n)
-					continue
-				}
-				payload = plain[:m]
-			}
-			if _, writeErr := pipeA.WriteTo(payload, peer); writeErr != nil {
-				sessCancel(fmt.Errorf("запись TURN → DTLS: %w", writeErr))
-				return
-			}
-		}
-	}()
-
-	go func() {
-		defer relayWg.Done()
-		defer sessCancel(nil)
-		b := make([]byte, readBufSize)
-		for {
-			n, _, readErr := pipeA.ReadFrom(b)
-			if readErr != nil {
-				sessCancel(fmt.Errorf("чтение DTLS → TURN: %w", readErr))
-				return
-			}
-			out := b[:n]
-			if useWrap {
-				if obfsCfg != nil && obfsWriteState != nil {
-					wrapped, wrapErr := obfsWrapPacket(tp.WrapKey, out, obfsCfg, obfsWriteState)
-					if wrapErr != nil {
-						log.Printf("[СЕССИЯ #%d] OBFS wrap: %v", sessionID, wrapErr)
-						return
-					}
-					out = wrapped
-				}
-			}
-			if _, writeErr := relay.WriteTo(out, peer); writeErr != nil {
-				sessCancel(fmt.Errorf("запись в TURN relay: %w", writeErr))
-				return
-			}
-		}
-	}()
+	var proxyWg sync.WaitGroup
+	defer func() { sessCancel(nil); transport.Close(); proxyWg.Wait() }()
 
 	cert, err := selfsign.GenerateSelfSigned()
 	if err != nil {
@@ -251,15 +87,20 @@ func RunSession(
 		ConnectionIDGenerator: dtls.OnlySendCIDGenerator(),
 	}
 
-	dtlsConn, err := dtls.Client(pipeB, peer, dtlsCfg)
+	dtlsConn, err := dtls.Client(transport, peer, dtlsCfg)
 	if err != nil {
 		<-handshakeSem
 		return false, fmt.Errorf("DTLS клиент: %w", err)
 	}
-	defer dtlsConn.Close()
-	stopDTLS := context.AfterFunc(sessCtx, func() {
-		_ = dtlsConn.SetDeadline(time.Now())
-	})
+	var closeOnce sync.Once
+	closeDTLS := func() {
+		closeOnce.Do(func() {
+			_ = dtlsConn.SetWriteDeadline(time.Now().Add(500 * time.Millisecond))
+			_ = dtlsConn.Close()
+		})
+	}
+	defer closeDTLS()
+	stopDTLS := context.AfterFunc(sessCtx, closeDTLS)
 	defer stopDTLS()
 
 	hctx, hcancel := context.WithTimeout(sessCtx, 20*time.Second)
@@ -289,7 +130,7 @@ func RunSession(
 			if strings.Contains(errStr, "FATAL_AUTH") {
 				return false, confErr
 			}
-			log.Printf("[ВОРКЕР #%d] Ошибка конфига: %v", sessionID, confErr)
+			return false, confErr
 		} else if conf != "" {
 			select {
 			case configCh <- conf:
@@ -300,7 +141,7 @@ func RunSession(
 				log.Printf("[ВОРКЕР #%d] Конфиг уже был доставлен другим воркером", sessionID)
 			}
 		} else {
-			log.Printf("[ВОРКЕР #%d] Сервер ещё не выдал WireGuard-конфиг, повторим позже", sessionID)
+			return false, fmt.Errorf("сервер ещё не выдал WireGuard-конфиг")
 		}
 	}
 
@@ -309,11 +150,14 @@ func RunSession(
 		SendCh: make(chan []byte, workerSendBuf),
 	}
 	d.Register(slot)
+	defer d.Unregister(slot)
+	if ready != nil {
+		ready()
+	}
 	rememberUsableTurnCredentials(creds)
 	log.Printf("[ВОРКЕР #%d] [READY] Туннель готов к работе ✓", sessionID)
 	emitReady()
 
-	var proxyWg sync.WaitGroup
 	proxyWg.Add(2)
 	readyAt := time.Now()
 	var lastEcho atomic.Int64
@@ -327,7 +171,6 @@ func RunSession(
 		write := func(pkt []byte) error {
 			deadline := time.Now().Add(packetWriteTimeout)
 			_ = dtlsConn.SetWriteDeadline(deadline)
-			_ = pipeB.SetWriteDeadline(deadline)
 			if err := sessCtx.Err(); err != nil {
 				return err
 			}
@@ -400,14 +243,6 @@ func RunSession(
 	}()
 
 	<-sessCtx.Done()
-	d.Unregister(slot)
-	_ = pipeA.Close()
-	_ = relay.Close()
-	tc.Close()
-	_ = c.Close()
-	proxyWg.Wait()
-	relayWg.Wait()
-	sessionWg.Wait()
 	log.Printf("[СЕССИЯ #%d] Завершена", sessionID)
 	return configDelivered, context.Cause(sessCtx)
 }

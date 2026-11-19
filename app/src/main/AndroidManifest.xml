@@ -63,6 +63,7 @@
         </service>
 
         <!-- пинг серверов: ядро Xray (Go) нельзя грузить в основной процесс, где работает WireGuard (тоже Go) -->
+        <service android:name=".SubscriptionRefreshJob" android:permission="android.permission.BIND_JOB_SERVICE" android:exported="false" />
         <service
             android:name=".PingService"
             android:exported="false"

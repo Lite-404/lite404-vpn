@@ -39,11 +39,11 @@ class WireGuardHelper(context: Context) {
         DISABLED_BY_EMPTY_WHITELIST
     }
 
-    suspend fun startTunnel(configString: String) = wgMutex.withLock {
-        startTunnelLocked(configString)
+    suspend fun startTunnel(configString: String, preserveSession: Boolean = false) = wgMutex.withLock {
+        startTunnelLocked(configString, preserveSession)
     }
 
-    private suspend fun startTunnelLocked(configString: String) = withContext(Dispatchers.IO) {
+    private suspend fun startTunnelLocked(configString: String, preserveSession: Boolean = false) = withContext(Dispatchers.IO) {
         try {
             if (VpnService.prepare(appContext) != null) {
                 throw IllegalStateException("VPN-разрешение не выдано")
@@ -58,7 +58,7 @@ class WireGuardHelper(context: Context) {
             }
             WdttRouter.stop(appContext)
 
-            ensureGoBackendServiceStarted()
+            if (!preserveSession || sharedTunnel == null) ensureGoBackendServiceStarted()
 
             val parsedConfig = Config.parse(ByteArrayInputStream(configString.toByteArray(Charsets.UTF_8)))
 
@@ -133,10 +133,14 @@ class WireGuardHelper(context: Context) {
                 .build()
 
             disabledByEmptyWhitelist = false
-            stopSharedTunnel("previous tunnel before restart")
-            val nextTunnel = WgTunnel()
-            setTunnelUpWithRetry(nextTunnel, finalConfig)
-            sharedTunnel = nextTunnel
+            val current = sharedTunnel.takeIf { preserveSession }
+            if (current != null) backend.setState(current, Tunnel.State.UP, finalConfig)
+            else {
+                stopSharedTunnel("previous tunnel before restart")
+                val nextTunnel = WgTunnel()
+                setTunnelUpWithRetry(nextTunnel, finalConfig)
+                sharedTunnel = nextTunnel
+            }
             Log.d("WG", "WireGuard tunnel started successfully")
         } catch (e: Exception) {
             if (e.isEmptyWhitelistFailure()) {

@@ -156,13 +156,14 @@ class AppModel(private val ctx: Context) {
     /** Загрузить данные с сервера. Возвращает true при успехе. */
     suspend fun refresh(t: Token? = token): Boolean {
         if (t == null) return false
+        val before = token
         loading = true
         try {
             val body = withContext(Dispatchers.IO) { AppApi.fetch(ctx, t) }
             val now = System.currentTimeMillis()
             val c = AppConfig.parse(body, now)
-            prefs.configJson = body
-            prefs.configAt = now
+            if (token != before) return false
+            prefs.saveConfig(body, now)
             config = c
             if (c.error == "device_limit") deviceLimit = true
             notify(AppApi.errorText(c.error), ToastKind.Error)
@@ -194,6 +195,12 @@ class AppModel(private val ctx: Context) {
         prefs.clear()
         token = null
         config = null
+    }
+
+    fun reloadCached() {
+        config = prefs.configJson.takeIf { it.isNotBlank() }?.let {
+            runCatching { AppConfig.parse(it, prefs.configAt) }.getOrNull()
+        }
     }
 }
 
@@ -250,6 +257,25 @@ class MainActivity : ComponentActivity() {
 private fun Root(haptics: Boolean, onAppearanceChanged: () -> Unit) {
     val ctx = LocalContext.current
     val model = remember { AppModel(ctx.applicationContext) }
+    val subscriptionScope = rememberCoroutineScope()
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(model, lifecycleOwner) {
+        val preferences = ctx.applicationContext.getSharedPreferences("lite404", Context.MODE_PRIVATE)
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == "config") model.reloadCached()
+        }
+        preferences.registerOnSharedPreferenceChangeListener(listener)
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) subscriptionScope.launch {
+                runCatching { SubscriptionSync.refresh(ctx.applicationContext) }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            preferences.unregisterOnSharedPreferenceChangeListener(listener)
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
     // разрешение на уведомления (Android 13+)
     val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
     LaunchedEffect(Unit) {
@@ -627,12 +653,13 @@ private fun VpnTab(
 }
 
 internal fun subscriptionExpiry(u: UserInfo): Pair<String, Color> {
-    val days = if (u.expiresAt <= 0) null else ((u.expiresAt - System.currentTimeMillis()) / 86_400_000L).coerceAtLeast(0)
+    val expiry = maxOf(u.expiresAt, u.paidUntil)
+    val days = if (expiry <= 0) null else ((expiry - System.currentTimeMillis()) / 86_400_000L).coerceAtLeast(0)
     return when {
         !u.enabled -> tr("Подписка выключена") to Danger
         days == null -> tr("Подписка бессрочная") to Muted
         else -> {
-            val date = SimpleDateFormat("dd.MM.yyyy", Locale.US).format(Date(u.expiresAt))
+            val date = SimpleDateFormat("dd.MM.yyyy", Locale.US).format(Date(expiry))
             daysLeftText(days, date).substringBefore('·').trimEnd() to
                 (if (days <= 3) Color(0xFFFFC233) else Color.White)
         }
@@ -727,6 +754,16 @@ private fun WdttTab(model: AppModel, live: LiveState, dockClearance: Dp, active:
     val servers = cfg?.wdtt.orEmpty()
     val hash = cfg?.vkHash.orEmpty()
     var savedIndex by remember { mutableIntStateOf(model.prefs.wdttIndex) }
+    val switching by TunnelManager.switchingServer.collectAsState()
+    val activePeer by TunnelManager.selectedPeer.collectAsState()
+    LaunchedEffect(activePeer, switching, servers) {
+        if (!switching && TunnelManager.running.value) {
+            servers.indexOfFirst { "${it.host}:${it.port}" == activePeer }.takeIf { it >= 0 }?.let {
+                savedIndex = it
+                model.prefs.wdttIndex = it
+            }
+        }
+    }
     val index = savedIndex.coerceIn(0, servers.lastIndex.coerceAtLeast(0))
     val expanded = active && serverPicker.expanded
     BackHandler(expanded) { serverPicker.expanded = false }
@@ -766,6 +803,7 @@ private fun WdttTab(model: AppModel, live: LiveState, dockClearance: Dp, active:
         Text(tr("Резерв"), fontSize = 28.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.align(Alignment.Start))
         Spacer(Modifier.height(14.dp))
         Text("●  " + tr(when {
+            switching -> "Переключение сервера..."
             connected -> "Подключено"
             transitioning -> "Подключение..."
             else -> "Отключено"

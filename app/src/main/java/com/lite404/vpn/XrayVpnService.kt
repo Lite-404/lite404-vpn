@@ -33,6 +33,8 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.net.NetworkInterface
 import java.util.UUID
+import org.json.JSONObject
+import org.json.JSONArray
 
 /**
  * Обычный VPN: ядро sing-box-extended (библиотека vpncore) в отдельном процессе «:xray».
@@ -76,6 +78,31 @@ class XrayVpnService : VpnService() {
         private fun stateFile(ctx: Context) = AtomicFile(File(ctx.filesDir, "xray_state"))
         private fun testFile(ctx: Context) = AtomicFile(File(ctx.filesDir, "xray_test"))
         private fun sinceFile(ctx: Context) = File(ctx.filesDir, "xray_since")
+        private fun resumeFile(ctx: Context) = AtomicFile(File(ctx.filesDir, "xray_resume.json"))
+        @Volatile private var owner: XrayVpnService? = null
+
+        private fun restoreIntent(ctx: Context): Intent? = runCatching {
+            val saved = JSONObject(resumeFile(ctx).readText())
+            val mode = saved.getString("mode")
+            if (Prefs(ctx).desiredMode != (if (mode == VpnMode.WDTT.name) "wdtt" else "xray") ||
+                VpnService.prepare(ctx) != null) return@runCatching null
+            val apps = saved.getJSONArray("apps")
+            Intent(ctx, XrayVpnService::class.java).setAction(ACTION_START)
+                .putExtra(EXTRA_REQUEST, saved.getString("request"))
+                .putExtra(EXTRA_NAME, saved.optString("name"))
+                .putExtra(EXTRA_MODE, mode).putExtra(EXTRA_APPS_MODE, saved.getString("apps_mode"))
+                .putExtra(EXTRA_APPS, Array(apps.length()) { apps.getString(it) })
+                .putExtra(EXTRA_LAN_DIRECT, saved.getBoolean("lan"))
+                .putExtra(EXTRA_TEST_URL, saved.getString("test_url"))
+                .putExtra(EXTRA_TEST_AFTER, saved.getBoolean("test_after"))
+        }.getOrNull()
+
+        /** Called by the surviving main process after an unexpected core-process exit. */
+        fun resumeSaved(ctx: Context): Boolean {
+            val intent = restoreIntent(ctx) ?: return false
+            ctx.startForegroundService(intent)
+            return true
+        }
 
         private fun AtomicFile.readText() = readFully().toString(Charsets.UTF_8)
 
@@ -187,6 +214,8 @@ class XrayVpnService : VpnService() {
     private var activeRequest: String? = null
     private var activeCommand = 0L
     private var needsRecovery = false
+    private var recovery: Runnable? = null
+    private var recoveryAttempt = 0
     private var testJob: Job? = null
     private var testUrl = Prefs.DEFAULT_PING_URL
     private var testAfterConnect = false
@@ -197,6 +226,13 @@ class XrayVpnService : VpnService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         lastStartId = startId
+        if (intent == null || intent.action == SERVICE_INTERFACE) {
+            val restored = restoreIntent(this)
+            VpnJournal.record(this, mode(this), "VPN: системный перезапуск службы · восстановление=${restored != null}")
+            if (restored != null) return onStartCommand(restored, flags, startId)
+            stopSelfResult(startId)
+            return START_NOT_STICKY
+        }
         when (intent?.action) {
             ACTION_START -> {
                 closing = false
@@ -211,8 +247,15 @@ class XrayVpnService : VpnService() {
                 foreground(name)
                 bg.post {
                     if (request != command) return@post
+                    owner = this
                     testUrl = intent.getStringExtra(EXTRA_TEST_URL) ?: Prefs.DEFAULT_PING_URL
                     testAfterConnect = intent.getBooleanExtra(EXTRA_TEST_AFTER, true)
+                    val saved = JSONObject().put("request", intent.getStringExtra(EXTRA_REQUEST))
+                        .put("name", name).put("mode", options.mode.name).put("apps_mode", options.appsMode)
+                        .put("apps", JSONArray(options.apps)).put("lan", options.lanDirect)
+                        .put("test_url", testUrl).put("test_after", testAfterConnect)
+                    runCatching { resumeFile(this).writeText(saved.toString()) }
+                        .onFailure { VpnJournal.record(this, options.mode, "VPN: не удалось сохранить параметры восстановления") }
                     startVpn(request, intent.getStringExtra(EXTRA_REQUEST).orEmpty(), options)
                 }
             }
@@ -224,13 +267,15 @@ class XrayVpnService : VpnService() {
                     }
                 }
             }
-            else -> {
+            ACTION_STOP -> {
+                resumeFile(this).delete()
                 if (intent?.getBooleanExtra("keep_transport", false) != true) stopReserveTransport()
                 VpnJournal.record(this, mode(this), "VPN: остановка")
                 stopVpn()
             }
+            else -> VpnJournal.record(this, mode(this), "VPN: проигнорирована посторонняя команда службы")
         }
-        return START_NOT_STICKY
+        return if (closing) START_NOT_STICKY else START_STICKY
     }
 
     private fun foreground(name: String) {
@@ -417,20 +462,33 @@ class XrayVpnService : VpnService() {
         return try {
             // После полного обрыва ядро может оставить старое состояние сети. TUN остаётся в Android.
             Vpncore.start(config, fd.fd, platform)
+            recoveryAttempt = 0
+            writeState(this, "running", activeRequest)
             true
         } catch (e: Exception) {
             Log.e(TAG, "VPN recovery failed", e)
             VpnJournal.record(this, mode(this), "VPN: ошибка восстановления · ${e.message ?: e.javaClass.simpleName}")
-            cleanup()
             if (activeCommand == command) {
-                writeState(this, "error:" + (e.message ?: e.javaClass.simpleName), activeRequest)
-                finish(activeCommand)
+                needsRecovery = true
+                writeState(this, "connecting", activeRequest)
+                recovery?.let(bg::removeCallbacks)
+                val commandId = command
+                val retry = Runnable {
+                    recovery = null
+                    if (!closing && owner === this && commandId == command && uplink != null && coreConfig != null)
+                        recoverCore(config)
+                }
+                recovery = retry
+                recoveryAttempt++
+                bg.postDelayed(retry, (500L shl recoveryAttempt.coerceAtMost(5)).coerceAtMost(30_000))
             }
             false
         }
     }
 
     private fun cleanup() {
+        recovery?.let(bg::removeCallbacks)
+        recovery = null
         clearTest()
         networkCallback?.let { runCatching { connectivity.unregisterNetworkCallback(it) } }
         networkCallback = null
@@ -439,10 +497,10 @@ class XrayVpnService : VpnService() {
         runCatching { tun?.close() }
         tun = null
         tunOptions = null
-        if (coreConfig != null) runCatching { Vpncore.stop() }
+        if (owner === this) runCatching { Vpncore.stop() }
         coreConfig = null
         needsRecovery = false
-        if (hadUplink) runCatching { Vpncore.setDefaultInterface("", -1) }
+        if (hadUplink && owner === this) runCatching { Vpncore.setDefaultInterface("", -1) }
     }
 
     private fun stopVpn() {
@@ -472,9 +530,14 @@ class XrayVpnService : VpnService() {
         }
     }
 
-    override fun onRevoke() { main.post { stopReserveTransport(); stopVpn() } }
+    override fun onRevoke() {
+        resumeFile(this).delete()
+        VpnJournal.record(this, mode(this), "VPN: Android отозвал VPN-разрешение или включён другой VPN")
+        main.post { stopReserveTransport(); stopVpn() }
+    }
 
     override fun onDestroy() {
+        VpnJournal.record(this, mode(this), "VPN: служба уничтожена · штатная остановка=$closing")
         ++command
         tests.cancel()
         bg.post { cleanup() }

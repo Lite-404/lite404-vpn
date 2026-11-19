@@ -36,7 +36,8 @@ data class WdttServer(val name: String, val host: String, val port: Int, val pas
 data class XrayServer(val name: String, val config: String)
 data class UserInfo(
     val name: String, val enabled: Boolean, val expiresAt: Long,
-    val up: Long, val down: Long, val total: Long, val devicesLimit: Int, val devices: Int
+    val up: Long, val down: Long, val total: Long, val devicesLimit: Int, val devices: Int,
+    val paidUntil: Long = expiresAt, val queuedPeriods: Int = 0
 )
 
 data class AppConfig(
@@ -57,7 +58,9 @@ data class AppConfig(
                 u.optString("name"), u.optBoolean("enabled"),
                 u.optLong("expires_at").let { if (it in 1 until 100_000_000_000L) it * 1000 else it }, // сервер шлёт секунды
                 u.optLong("up"), u.optLong("down"), u.optLong("total"),
-                u.optInt("devices_limit"), u.optInt("devices")
+                u.optInt("devices_limit"), u.optInt("devices"),
+                u.optLong("paid_until", u.optLong("expires_at")).let { if (it in 1 until 100_000_000_000L) it * 1000 else it },
+                u.optInt("queued_periods")
             )
             val wd = o.optJSONArray("wdtt") ?: JSONArray()
             val wdtt = (0 until wd.length()).map {
@@ -98,6 +101,7 @@ object AppApi {
         val ssl = SSLContext.getInstance("TLS").apply { init(null, arrayOf(tm), null) }
         val headers = linkedMapOf(
             "Authorization" to "Bearer ${token.key}",
+            "Cache-Control" to "no-cache",
             "X-HWID" to hwid(ctx),
             "X-Device-OS" to "Android",
             "X-Ver-OS" to Build.VERSION.RELEASE,

@@ -15,6 +15,7 @@ import (
 
 // Settings — всё, что хранится между запусками (в папке настроек пользователя: Lite404/settings.json).
 type Settings struct {
+	ConfigAt       int64           `json:"config_at"`
 	NetworkMode    string          `json:"network_mode"`
 	Token          string          `json:"token"`
 	Config         json.RawMessage `json:"config,omitempty"` // последний ответ сервера — чтобы работать без связи с ним

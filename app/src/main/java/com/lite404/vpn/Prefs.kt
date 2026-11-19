@@ -18,6 +18,10 @@ class Prefs(ctx: Context) {
         get() = p.getLong("config_at", 0)
         set(v) = p.edit().putLong("config_at", v).apply()
 
+    fun saveConfig(raw: String, at: Long) {
+        p.edit().putString("config", raw).putLong("config_at", at).commit()
+    }
+
     var swipeTabsEnabled: Boolean
         get() = p.getBoolean("swipe_tabs_enabled", true)
         set(v) = p.edit().putBoolean("swipe_tabs_enabled", v).apply()
@@ -102,8 +106,15 @@ class Prefs(ctx: Context) {
     /** Какой режим пользователь включил последним: "xray", "wdtt" или "" (выключено). Нужен, чтобы после
      *  того как система убила процесс во сне, восстановить именно его и не мешать другому. */
     var desiredMode: String
-        get() = p.getString("desired_mode", "") ?: ""
-        set(v) { p.edit().putString("desired_mode", v).commit() }
+        get() = runCatching { desired.readFully().decodeToString() }.getOrElse { p.getString("desired_mode", "") ?: "" }
+        set(v) {
+            val output = desired.startWrite()
+            try { output.write(v.toByteArray()); desired.finishWrite(output) }
+            catch (e: Exception) { desired.failWrite(output); throw e }
+            p.edit().putString("desired_mode", v).commit()
+        }
+
+    private val desired = android.util.AtomicFile(java.io.File(ctx.applicationContext.filesDir, "vpn_desired"))
 
     /** Адрес для пинга и проверки соединения (должен отвечать 204/200 без тела). */
     var pingUrl: String

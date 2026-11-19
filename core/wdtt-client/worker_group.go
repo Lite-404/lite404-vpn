@@ -338,6 +338,7 @@ func normalizeVKJoinHash(input string) string {
 }
 
 type TurnParams struct {
+	Switcher *peerSwitcher
 	Host     string
 	Port     string
 	Hashes   []string

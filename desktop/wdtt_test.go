@@ -1,10 +1,77 @@
 package main
 
 import (
+	"bytes"
 	"os/exec"
+	"strings"
 	"testing"
 	"time"
 )
+
+type switchTestInput struct{ bytes.Buffer }
+
+func (*switchTestInput) Close() error { return nil }
+
+func TestWdttSwitchRetainsProcessAndWorkers(t *testing.T) {
+	cmd := &exec.Cmd{}
+	input := &switchTestInput{}
+	w := &Wdtt{cmd: cmd, stdin: input, running: true, active: 30, server: WdttServer{Host: "old.test", Port: 1}}
+	done := make(chan error, 1)
+	applied := make(chan string, 1)
+	go func() {
+		done <- w.Switch(WdttServer{Host: "new.test", Port: 2}, func(config string) error { applied <- config; return nil })
+	}()
+	var id string
+	deadline := time.Now().Add(time.Second)
+	for id == "" && time.Now().Before(deadline) {
+		w.mu.Lock()
+		if w.switching != nil {
+			id = w.switching.id
+		}
+		w.mu.Unlock()
+		time.Sleep(time.Millisecond)
+	}
+	if id == "" {
+		t.Fatal("switch not started")
+	}
+	if state := w.State(); state.Active != 30 || !state.Running || !state.Switching {
+		t.Fatal("switch stopped current transport")
+	}
+	w.handleEvent(cmd, `__WDTT_EVENT__|SWITCH_CONFIG|{"id":"`+id+`","config":"new config"}`, nil)
+	select {
+	case config := <-applied:
+		if config != "new config" {
+			t.Fatal(config)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("config not applied")
+	}
+	deadline = time.Now().Add(time.Second)
+	acknowledged := false
+	for !acknowledged && time.Now().Before(deadline) {
+		w.mu.Lock()
+		acknowledged = strings.Contains(input.String(), "SWITCH_ACK|")
+		w.mu.Unlock()
+		time.Sleep(time.Millisecond)
+	}
+	if !acknowledged {
+		t.Fatal("application did not acknowledge configuration")
+	}
+	w.handleEvent(cmd, `__WDTT_EVENT__|SWITCHED|{"id":"`+id+`"}`, nil)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("switch did not finish")
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.cmd != cmd || w.server.Host != "new.test" || w.active != 30 {
+		t.Fatal("process was replaced during switch")
+	}
+}
 
 func TestWdttStructuredStatsAreImmediate(t *testing.T) {
 	cmd := &exec.Cmd{}

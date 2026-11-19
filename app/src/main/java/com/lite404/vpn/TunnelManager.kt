@@ -40,6 +40,109 @@ object TunnelManager {
     private var watchdogJob: Job? = null
     private var restartJob: Job? = null
     private var wgHelper: WireGuardHelper? = null
+    private data class ServerSwitch(val id: String, val proc: Process, val next: TunnelParams,
+        val oldConfig: String, val result: kotlinx.coroutines.CompletableDeferred<Boolean>, var applied: Boolean = false)
+    @Volatile private var serverSwitch: ServerSwitch? = null
+    val switchingServer = MutableStateFlow(false)
+    val selectedPeer = MutableStateFlow("")
+    val switchError = MutableStateFlow<String?>(null)
+
+    fun canSwitchServer(vkHash: String): Boolean = running.value && wireGuardReady.value && !paused.value &&
+        process?.isAlive == true && currentParams?.vkHashes == vkHash && serverSwitch == null
+
+    private fun sendControl(proc: Process, line: String) {
+        synchronized(proc.outputStream) {
+            proc.outputStream.write((line + "\n").toByteArray(Charsets.UTF_8))
+            proc.outputStream.flush()
+        }
+    }
+
+    suspend fun switchServer(server: WdttServer): Boolean {
+        val request: ServerSwitch
+        startStopMutex.lock()
+        try {
+            val proc = checkNotNull(process)
+            val params = checkNotNull(currentParams)
+            val peer = "${server.host}:${server.port}"
+            if (params.peer == peer && params.connectionPassword == server.password) return true
+            check(serverSwitch == null && proc.isAlive && !stopRequested)
+            request = ServerSwitch(java.util.UUID.randomUUID().toString(), proc,
+                params.copy(peer = peer, connectionPassword = server.password), checkNotNull(config.value),
+                kotlinx.coroutines.CompletableDeferred())
+            serverSwitch = request
+            switchingServer.value = true
+            switchError.value = null
+            sendControl(proc, "SWITCH|" + org.json.JSONObject().put("id", request.id).put("peer", peer).put("password", server.password))
+        } catch (e: Exception) {
+            serverSwitch = null
+            switchingServer.value = false
+            throw e
+        } finally { startStopMutex.unlock() }
+        return try { kotlinx.coroutines.withTimeout(65_000) { request.result.await() } }
+        finally {
+            withContext(kotlinx.coroutines.NonCancellable) {
+                startStopMutex.lock()
+                try {
+                    if (serverSwitch === request) {
+                        if (request.applied && process === request.proc && !stopRequested)
+                            runCatching { wgHelper?.startTunnel(request.oldConfig, preserveSession = true) }
+                        config.value = request.oldConfig
+                        runCatching { sendControl(request.proc, "SWITCH_ACK|" + org.json.JSONObject().put("id", request.id).put("success", false)) }
+                        serverSwitch = null
+                        switchingServer.value = false
+                    }
+                } finally { startStopMutex.unlock() }
+            }
+        }
+    }
+
+    fun cancelServerSwitch() {
+        serverSwitch?.let { request ->
+            runCatching { sendControl(request.proc, "SWITCH_ACK|" + org.json.JSONObject().put("id", request.id).put("success", false)) }
+            request.result.complete(false)
+        }
+    }
+
+    private fun handleServerSwitch(event: TunnelEventParser.Event, proc: Process) {
+        scope.launch {
+            startStopMutex.lock()
+            try {
+                val request = serverSwitch?.takeIf { it.proc === proc && process === proc } ?: return@launch
+                val helper = wgHelper ?: return@launch
+                when (event) {
+                    is TunnelEventParser.Event.SwitchConfig -> if (event.id == request.id && !stopRequested) {
+                        val success = runCatching { helper.startTunnel(event.config, preserveSession = true) }.isSuccess
+                        request.applied = success
+                        if (success) config.value = event.config
+                        else wireGuardReady.value = runCatching { helper.startTunnel(request.oldConfig, preserveSession = true) }.isSuccess
+                        sendControl(proc, "SWITCH_ACK|" + org.json.JSONObject().put("id", request.id).put("success", success))
+                    }
+                    is TunnelEventParser.Event.SwitchResult -> if (event.id == request.id) {
+                        if (event.success) {
+                            currentParams = request.next
+                            selectedPeer.value = request.next.peer
+                            val context = checkNotNull(lastContext)
+                            runCatching { SettingsStore(context).apply {
+                                save(request.next.peer, request.next.vkHashes, request.next.secondaryVkHash,
+                                    request.next.workersPerHash, request.next.protocol, request.next.port)
+                                saveConnectionPassword(request.next.connectionPassword)
+                            } }.onFailure { updateLog("switch_save_failed", "Не удалось сохранить выбранный сервер", 90, true) }
+                            switchError.value = null
+                        } else {
+                            if (request.applied) wireGuardReady.value = runCatching { helper.startTunnel(request.oldConfig, preserveSession = true) }.isSuccess
+                            config.value = request.oldConfig
+                            switchError.value = event.message.ifBlank { "Не удалось переключить сервер" }
+                            updateLog("server_switch_failed", switchError.value.orEmpty(), 50, true)
+                        }
+                        serverSwitch = null
+                        switchingServer.value = false
+                        request.result.complete(event.success)
+                    }
+                    else -> Unit
+                }
+            } finally { startStopMutex.unlock() }
+        }
+    }
 
     private val startStopMutex = kotlinx.coroutines.sync.Mutex()
 
@@ -93,6 +196,7 @@ object TunnelManager {
 
     private fun handleTunnelEvent(event: TunnelEventParser.Event, now: Long, proc: Process): Boolean {
         when (event) {
+            is TunnelEventParser.Event.SwitchConfig, is TunnelEventParser.Event.SwitchResult -> handleServerSwitch(event, proc)
             is TunnelEventParser.Event.Stats -> {
                 activeWorkers.value = event.active
                 if (event.active > 0) {
@@ -201,6 +305,8 @@ object TunnelManager {
                 val appContext = context.applicationContext
 
                 if (!isSwitching) {
+                    selectedPeer.value = params.peer
+                    switchError.value = null
                     lastError = null
                     clearLogs()
                     config.value = null
@@ -770,6 +876,9 @@ object TunnelManager {
     }
 
     private fun killProcess() {
+        cancelServerSwitch()
+        serverSwitch = null
+        switchingServer.value = false
         watchdogJob?.cancel()
         readerJob?.cancel()
         val proc = process

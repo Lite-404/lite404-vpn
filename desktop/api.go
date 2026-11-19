@@ -46,14 +46,16 @@ func ParseToken(raw string) (*Token, error) {
 }
 
 type UserInfo struct {
-	Name         string `json:"name"`
-	Enabled      bool   `json:"enabled"`
-	ExpiresAt    int64  `json:"expires_at"`
-	Up           int64  `json:"up"`
-	Down         int64  `json:"down"`
-	Total        int64  `json:"total"`
-	DevicesLimit int    `json:"devices_limit"`
-	Devices      int    `json:"devices"`
+	PaidUntil     int64  `json:"paid_until"`
+	QueuedPeriods int    `json:"queued_periods"`
+	Name          string `json:"name"`
+	Enabled       bool   `json:"enabled"`
+	ExpiresAt     int64  `json:"expires_at"`
+	Up            int64  `json:"up"`
+	Down          int64  `json:"down"`
+	Total         int64  `json:"total"`
+	DevicesLimit  int    `json:"devices_limit"`
+	Devices       int    `json:"devices"`
 }
 
 // AppConfig — ответ /app/v1/config: обычные серверы (JSON-подписка 3x-ui), профили маршрутизации из панели.

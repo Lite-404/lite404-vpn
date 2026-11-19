@@ -115,10 +115,18 @@ func main() {
 		scanner := bufio.NewScanner(os.Stdin)
 		for scanner.Scan() {
 			line := strings.TrimSpace(scanner.Text())
-			if !strings.Contains(line, "error:tunnel stopped") {
+			if !strings.Contains(line, "error:tunnel stopped") && !strings.HasPrefix(line, "SWITCH") {
 				log.Printf("[STDIN] %s", line)
 			}
 			switch {
+			case strings.HasPrefix(line, "SWITCH|"):
+				if m := activeSwitcher.Load(); m != nil {
+					m.request(strings.TrimPrefix(line, "SWITCH|"))
+				}
+			case strings.HasPrefix(line, "SWITCH_ACK|"):
+				if m := activeSwitcher.Load(); m != nil {
+					_ = m.control(strings.TrimPrefix(line, "SWITCH_ACK|"))
+				}
 			case line == "PAUSE":
 				atomic.StoreInt32(&pauseFlag, 1)
 			case line == "RESUME":
@@ -297,6 +305,13 @@ func main() {
 	defer disp.Shutdown()
 
 	configCh := make(chan string, 1)
+	var switcher *peerSwitcher
+	if managedClient {
+		switcher = newPeerSwitcher(ctx, tp, peer, disp, localPort, *deviceID, *connPassword, stats, configCh)
+		tp.Switcher = switcher
+		activeSwitcher.Store(switcher)
+		defer func() { activeSwitcher.Store(nil); switcher.Close() }()
+	}
 	configDone := make(chan struct{})
 	go func() {
 		defer close(configDone)
@@ -387,6 +402,10 @@ func main() {
 	}
 
 	wg.Wait()
+	if switcher != nil {
+		activeSwitcher.Store(nil)
+		switcher.Close()
+	}
 	close(configCh)
 	<-configDone
 	log.Println("[КЛИЕНТ] Все воркеры завершены")

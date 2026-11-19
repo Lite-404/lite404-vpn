@@ -54,6 +54,52 @@ object Connection {
     private var wdttTestedSession = false
     private var wdttZeroSince = 0L
     private const val WDTT_FLAP_MS = 8_000L
+    private var primaryWasRunning = false
+    private var primaryRecoveryAt = 0L
+    private var primaryRecoveryAttempts = 0
+    private var primaryHealthySince = 0L
+    private var primaryRecoveryError: String? = null
+
+    private fun recoverPrimary(app: Context, actual: String, routed: Boolean): Boolean {
+        if (routed || Prefs(app).desiredMode != "xray" || VpnService.prepare(app) != null) {
+            primaryWasRunning = false
+            primaryRecoveryAttempts = 0
+            primaryHealthySince = 0L
+            primaryRecoveryError = null
+            return false
+        }
+        val now = SystemClock.elapsedRealtime()
+        if (actual == "running") {
+            primaryWasRunning = true
+            primaryRecoveryError = null
+            if (primaryHealthySince == 0L) primaryHealthySince = now
+            if (now - primaryHealthySince > 60_000) primaryRecoveryAttempts = 0
+            return false
+        }
+        primaryHealthySince = 0L
+        // A cold launch must respect connectOnOpen=false. Only recover a
+        // connection that this still-alive main process actually observed up.
+        if (!primaryWasRunning || actual != "stopped") return false
+        if (now >= primaryRecoveryAt) {
+            if (primaryRecoveryAttempts >= 4) {
+                primaryWasRunning = false
+                primaryRecoveryError = tr("Процесс VPN несколько раз остановился. Подключитесь снова; подробности — в журнале")
+                return false
+            }
+            primaryRecoveryAttempts++
+            primaryRecoveryAt = now + (2_000L shl (primaryRecoveryAttempts - 1)).coerceAtMost(30_000)
+            try {
+                if (!XrayVpnService.resumeSaved(app)) {
+                    primaryWasRunning = false
+                    return false // explicit Stop/revocation removed the checkpoint
+                }
+                VpnJournal.record(app, VpnMode.XRAY, "VPN: восстановление отдельного процесса · попытка $primaryRecoveryAttempts")
+            } catch (e: Exception) {
+                VpnJournal.record(app, VpnMode.XRAY, "VPN: система отложила восстановление · ${e.javaClass.simpleName}")
+            }
+        }
+        return true
+    }
 
     /** Запустить слежение за службами (вызывается экраном; повторный вызов ничего не делает). */
     fun attach(ctx: Context) {
@@ -76,6 +122,10 @@ object Connection {
         cachedGeoOnly: Boolean = false, notice: (String) -> Unit = {}
     ) =
         run(ctx, ConnState(VpnMode.XRAY, Phase.CONNECTING)) { app ->
+        primaryWasRunning = false
+        primaryRecoveryAttempts = 0
+        primaryRecoveryAt = 0L
+        primaryRecoveryError = null
         val prefs = Prefs(app)
         val user = prefs.userLists()
         val usable = profile?.takeIf { if (cachedGeoOnly) Routing.hasGeo(app) else Routing.ensureGeo(app, it) }
@@ -101,7 +151,12 @@ object Connection {
         }
     }
 
-    fun connectWdtt(ctx: Context, server: WdttServer, vkHash: String, cachedGeoOnly: Boolean = false) = run(ctx, ConnState(VpnMode.WDTT, Phase.CONNECTING)) { app ->
+    fun connectWdtt(ctx: Context, server: WdttServer, vkHash: String, cachedGeoOnly: Boolean = false) = run(ctx,
+        ConnState(VpnMode.WDTT, if (TunnelManager.canSwitchServer(vkHash)) Phase.ON else Phase.CONNECTING)) { app ->
+        if (TunnelManager.canSwitchServer(vkHash)) {
+            if (TunnelManager.switchServer(server)) wdttTestedSession = false
+            return@run
+        }
         if (WdttController.active()) {
             WdttController.stopAndWait(app)   // смена страны: сначала гасим текущий туннель WDTT
         }
@@ -164,6 +219,7 @@ object Connection {
             // идёт операция: повторное «подключить» игнорируем (двойное нажатие), а «стоп» встаёт в очередь
             if (shown.phase != Phase.STOPPING || pending?.phase == Phase.STOPPING) return null
             abort = true
+            TunnelManager.cancelServerSwitch()
         }
         wdttTestJob?.cancel()
         pending = shown
@@ -198,6 +254,7 @@ object Connection {
         val xray = XrayVpnService.state(app)
         val routed = XrayVpnService.mode(app) == VpnMode.WDTT &&
             (WdttRouter.enabled || xray == "running" || xray == "connecting")
+        val primaryRecovering = recoverPrimary(app, xray, routed)
         val wdttRunning = TunnelManager.running.value
         val wdttStarting = TunnelManager.starting.value
         val workers = TunnelManager.activeWorkers.value
@@ -212,11 +269,15 @@ object Connection {
         val next = when {
             !routed && xray == "running" -> ConnState(VpnMode.XRAY, Phase.ON, test = xrayTest(app))
             !routed && xray == "connecting" -> ConnState(VpnMode.XRAY, Phase.CONNECTING)
+            primaryRecovering -> ConnState(VpnMode.XRAY, Phase.CONNECTING)
             wdttRunning && workers > 0 && TunnelManager.wireGuardReady.value ->
-                ConnState(VpnMode.WDTT, Phase.ON, test = if (routed) xrayTest(app) else prev.test.takeIf { prev.mode == VpnMode.WDTT })
+                ConnState(VpnMode.WDTT, Phase.ON, error = TunnelManager.switchError.value,
+                    errorMode = VpnMode.WDTT.takeIf { TunnelManager.switchError.value != null },
+                    test = if (routed) xrayTest(app) else prev.test.takeIf { prev.mode == VpnMode.WDTT })
             wdttBlip -> prev
             wdttRunning || wdttStarting || TunnelManager.paused.value -> ConnState(VpnMode.WDTT, Phase.CONNECTING, test = prev.test.takeIf { prev.mode == VpnMode.WDTT })
             xray.startsWith("error:") -> ConnState(error = xray.removePrefix("error:"), errorMode = if (routed) VpnMode.WDTT else VpnMode.XRAY)
+            primaryRecoveryError != null -> ConnState(error = primaryRecoveryError, errorMode = VpnMode.XRAY)
             // WDTT сам остановился (не по кнопке) — показываем причину из журнала туннеля
             prev.mode == VpnMode.WDTT && prev.phase != Phase.OFF && prev.phase != Phase.STOPPING ->
                 ConnState(

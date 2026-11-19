@@ -24,6 +24,8 @@ class WdttApplication : Application() {
         // ядро Xray работает в отдельном процессе «:xray» — WireGuard и WDTT там не нужны
         if (getProcessName() != packageName) return
 
+        SubscriptionSync.schedule(this)
+
 
 
 

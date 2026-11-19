@@ -11,6 +11,8 @@ object TunnelEventParser {
         data class Stopped(val message: String = "") : Event()
         data class Ready(val message: String = "") : Event()
         data class Config(val config: String) : Event()
+        data class SwitchConfig(val id: String, val config: String) : Event()
+        data class SwitchResult(val id: String, val success: Boolean, val message: String) : Event()
         data class Stats(
             val active: Int,
             val bytesUp: Long,
@@ -55,6 +57,8 @@ object TunnelEventParser {
             "STOPPED" -> Event.Stopped(payload.optString("message", ""))
             "READY" -> Event.Ready(payload.optString("message", ""))
             "CONFIG" -> Event.Config(payload.optString("config", ""))
+            "SWITCH_CONFIG" -> Event.SwitchConfig(payload.optString("id"), payload.optString("config"))
+            "SWITCHED", "SWITCH_FAILED" -> Event.SwitchResult(payload.optString("id"), type == "SWITCHED", payload.optString("message"))
             "STATS" -> Event.Stats(
                 active = payload.optInt("active", 0),
                 bytesUp = payload.optLong("bytes_up", 0L),

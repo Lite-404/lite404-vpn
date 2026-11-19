@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -54,9 +55,56 @@ type Wdtt struct {
 	done       chan struct{}
 	watchStop  chan struct{}
 	generation uint64
+	switching  *wdttSwitch
 
 	onConfig func(conf string) // клиент выдал WireGuard-конфиг
 	onFatal  func(reason string)
+}
+
+type wdttSwitch struct {
+	id     string
+	server WdttServer
+	apply  func(string) error
+	done   chan error
+}
+
+func (w *Wdtt) canSwitch(hash string) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.running && w.cmd != nil && w.active > 0 && w.hash == hash && w.switching == nil
+}
+func (w *Wdtt) Switch(server WdttServer, apply func(string) error) error {
+	w.mu.Lock()
+	if w.switching != nil || w.cmd == nil || w.stdin == nil || !w.running {
+		w.mu.Unlock()
+		return errors.New("резервный VPN ещё не готов к переключению")
+	}
+	if w.server.Host == server.Host && w.server.Port == server.Port && w.server.Password == server.Password {
+		w.mu.Unlock()
+		return nil
+	}
+	request := &wdttSwitch{id: strconv.FormatInt(time.Now().UnixNano(), 10), server: server, apply: apply, done: make(chan error, 1)}
+	w.switching = request
+	payload, _ := json.Marshal(map[string]any{"id": request.id, "peer": net.JoinHostPort(server.Host, strconv.Itoa(server.Port)), "password": server.Password})
+	_, err := fmt.Fprintln(w.stdin, "SWITCH|"+string(payload))
+	w.mu.Unlock()
+	if err == nil {
+		select {
+		case err = <-request.done:
+		case <-time.After(65 * time.Second):
+			err = errors.New("превышено время переключения сервера")
+		}
+	}
+	w.mu.Lock()
+	if w.switching == request {
+		if w.stdin != nil {
+			ack, _ := json.Marshal(map[string]any{"id": request.id, "success": false})
+			fmt.Fprintln(w.stdin, "SWITCH_ACK|"+string(ack))
+		}
+		w.switching = nil
+	}
+	w.mu.Unlock()
+	return err
 }
 
 var tsPrefix = regexp.MustCompile(`^\d{4}/\d{2}/\d{2}\s\d{2}:\d{2}:\d{2}(\.\d+)?\s`)
@@ -382,6 +430,10 @@ func (w *Wdtt) RestartTransport() {
 }
 
 func (w *Wdtt) killLocked() {
+	if request := w.switching; request != nil {
+		request.done <- errors.New("транспорт перезапущен или отключён")
+		w.switching = nil
+	}
 	cmd := w.cmd
 	if w.watchStop != nil {
 		close(w.watchStop)
@@ -425,6 +477,7 @@ func (w *Wdtt) handleEvent(cmd *exec.Cmd, line string, onConfig func(string)) {
 		Config  string `json:"config"`
 		Message string `json:"message"`
 		Fatal   bool   `json:"fatal"`
+		ID      string `json:"id"`
 	}
 	if parts[2] != "" && json.Unmarshal([]byte(parts[2]), &event) != nil {
 		return
@@ -435,6 +488,30 @@ func (w *Wdtt) handleEvent(cmd *exec.Cmd, line string, onConfig func(string)) {
 		return
 	}
 	switch parts[1] {
+	case "SWITCH_CONFIG":
+		if request := w.switching; request != nil && request.id == event.ID {
+			go func() {
+				err := request.apply(event.Config)
+				w.mu.Lock()
+				defer w.mu.Unlock()
+				if w.cmd == cmd && w.switching == request && w.stdin != nil {
+					ack, _ := json.Marshal(map[string]any{"id": request.id, "success": err == nil})
+					fmt.Fprintln(w.stdin, "SWITCH_ACK|"+string(ack))
+				}
+			}()
+		}
+	case "SWITCHED", "SWITCH_FAILED":
+		if request := w.switching; request != nil && request.id == event.ID {
+			var err error
+			if parts[1] == "SWITCHED" {
+				w.server = request.server
+			} else {
+				err = errors.New(event.Message)
+				w.log(event.Message, true)
+			}
+			w.switching = nil
+			request.done <- err
+		}
 	case "STATS":
 		w.active = event.Active
 		w.stats = fmt.Sprintf("Активных: %d | Трафик: %.2f МБ", event.Active, float64(event.Up+event.Down)/(1024*1024))
@@ -465,16 +542,17 @@ func (w *Wdtt) Stop() {
 }
 
 type WdttState struct {
-	Running bool      `json:"running"`
-	Active  int       `json:"active"`
-	Stats   string    `json:"stats"`
-	Logs    []LogLine `json:"-"`
+	Switching bool      `json:"switching"`
+	Running   bool      `json:"running"`
+	Active    int       `json:"active"`
+	Stats     string    `json:"stats"`
+	Logs      []LogLine `json:"-"`
 }
 
 func (w *Wdtt) State() WdttState {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return WdttState{Running: w.running, Active: w.active, Stats: w.stats}
+	return WdttState{Running: w.running, Active: w.active, Stats: w.stats, Switching: w.switching != nil}
 }
 
 func (w *Wdtt) Logs() []LogLine {

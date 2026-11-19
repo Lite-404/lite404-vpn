@@ -81,6 +81,7 @@ type Dispatcher struct {
 	cancel     context.CancelFunc
 	wg         sync.WaitGroup
 	stats      *Stats
+	muted      atomic.Bool
 }
 
 func NewDispatcher(ctx context.Context, localConn net.PacketConn, stats *Stats) *Dispatcher {
@@ -95,6 +96,7 @@ func NewDispatcher(ctx context.Context, localConn net.PacketConn, stats *Stats) 
 
 	empty := make([]*WorkerSlot, 0)
 	d.workers.Store(&empty)
+	context.AfterFunc(dctx, func() { _ = localConn.Close() })
 
 	d.wg.Add(2)
 	go d.readLoop()
@@ -137,6 +139,9 @@ func (d *Dispatcher) Unregister(slot *WorkerSlot) {
 }
 
 func (d *Dispatcher) publishWorkerCount(count int) {
+	if d.muted.Load() {
+		return
+	}
 	d.stats.ActiveConnections.Store(int32(count))
 	if managedClient {
 		emitStats(d.stats)

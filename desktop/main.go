@@ -42,6 +42,7 @@ type Test struct {
 
 type App struct {
 	mu          sync.Mutex
+	refreshMu   sync.Mutex
 	s           *Settings
 	cfg         *AppConfig
 	inst        *boxcore.Instance
@@ -110,6 +111,8 @@ func (a *App) serverProfile() obj {
 }
 
 func (a *App) refresh() error {
+	a.refreshMu.Lock()
+	defer a.refreshMu.Unlock()
 	a.mu.Lock()
 	tok := a.s.Token
 	a.loading = true
@@ -125,8 +128,12 @@ func (a *App) refresh() error {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if a.s.Token != tok {
+		return nil
+	}
 	a.cfg = c
 	a.s.Config = raw
+	a.s.ConfigAt = time.Now().UnixMilli()
 	a.s.save()
 	return nil
 }
@@ -266,6 +273,44 @@ func (a *App) connectWdtt(i int) error {
 		a.mu.Unlock()
 		return errors.New("Для вас нет серверов резервного VPN")
 	}
+	if a.mode == "wdtt" && a.wdtt.State().Switching {
+		a.mu.Unlock()
+		return nil
+	}
+	if a.mode == "wdtt" && a.inst != nil && a.wdtt.canSwitch(a.cfg.VKHash) {
+		server, generation, previous := a.cfg.Wdtt[i], a.generation, a.instConf
+		a.errText = ""
+		a.mu.Unlock()
+		err := a.wdtt.Switch(server, func(conf string) error {
+			a.mu.Lock()
+			defer a.mu.Unlock()
+			if a.generation != generation || a.mode != "wdtt" {
+				return errors.New("подключение отменено")
+			}
+			if err := a.applyWdttConfigLocked(conf); err != nil {
+				_ = a.applyWdttConfigLocked(previous)
+				return err
+			}
+			return nil
+		})
+		a.mu.Lock()
+		if a.generation == generation && a.mode == "wdtt" {
+			if err != nil {
+				if a.instConf != previous {
+					_ = a.applyWdttConfigLocked(previous)
+				}
+				a.errText = err.Error()
+				a.s.WdttServer = a.conn
+			} else {
+				a.conn = i
+				a.s.WdttServer = i
+				a.tested = false
+			}
+			a.s.save()
+		}
+		a.mu.Unlock()
+		return err
+	}
 	a.stopAllLocked()
 	a.networkMode = a.s.NetworkMode
 	server, hash := a.cfg.Wdtt[i], a.cfg.VKHash
@@ -310,6 +355,14 @@ func (a *App) onWdttConfig(conf string, generation uint64) {
 	if a.mode != "wdtt" || a.generation != generation || conf == a.instConf && a.inst != nil {
 		return
 	}
+	if err := a.applyWdttConfigLocked(conf); err != nil {
+		a.wdtt.mu.Lock()
+		a.wdtt.log("Ошибка запуска VPN: "+err.Error(), true)
+		a.wdtt.mu.Unlock()
+	}
+}
+
+func (a *App) applyWdttConfigLocked(conf string) error {
 	server, err := WireGuardServer(conf)
 	var cfg []byte
 	if err == nil {
@@ -325,12 +378,10 @@ func (a *App) onWdttConfig(conf string, generation uint64) {
 		err = a.startProxyLocked(cfg, a.s.LanWdtt)
 	}
 	if err != nil {
-		a.wdtt.mu.Lock()
-		a.wdtt.log("Ошибка запуска VPN: "+err.Error(), true)
-		a.wdtt.mu.Unlock()
-		return
+		return err
 	}
 	a.instConf = conf
+	return nil
 }
 
 func (a *App) onWdttFatal(reason string, generation uint64) {
@@ -412,12 +463,17 @@ func (a *App) pingAll() {
 // tick — раз в секунду: скорость, момент появления потоков WDTT, проверка соединения резервного VPN.
 func (a *App) tick() {
 	var network networkTracker
+	var subscriptionAttempt time.Time
 	for range time.Tick(time.Second) {
 		if network.changed(physicalNetworkKey(), time.Now()) {
 			a.wdtt.RestartTransport()
 		}
 		w := a.wdtt.State()
 		a.mu.Lock()
+		if a.s.Token != "" && time.Since(time.UnixMilli(a.s.ConfigAt)) >= 2*time.Hour && time.Since(subscriptionAttempt) >= 5*time.Minute {
+			subscriptionAttempt = time.Now()
+			go func() { _ = a.refresh() }()
+		}
 		if a.inst != nil {
 			up, dn := Traffic(a.inst)
 			if a.lastUp > 0 || a.lastDn > 0 {
@@ -463,7 +519,8 @@ func (a *App) state() obj {
 	st := obj{
 		"version": version, "xrayVersion": "sing-box " + boxcore.Version(), "os": osName(),
 		"hasToken": a.s.Token != "", "loading": a.loading,
-		"mode": a.mode, "phase": a.phase, "error": a.errText, "notice": a.notice, "test": a.test, "conn": a.conn,
+		"subscriptionUpdatedAt": a.s.ConfigAt,
+		"mode":                  a.mode, "phase": a.phase, "error": a.errText, "notice": a.notice, "test": a.test, "conn": a.conn,
 		"server": a.s.Server, "wdttServer": a.s.WdttServer,
 		"routing": a.s.Routing, "lanDirect": *a.s.LanDirect, "lanWdtt": a.s.LanWdtt,
 		"systemProxy": a.s.SystemProxy, "pingUrl": a.s.PingURL, "pingUrls": pingURLs,
@@ -475,7 +532,7 @@ func (a *App) state() obj {
 		"journalPrimary": a.s.JournalPrimary, "journalReserve": a.s.JournalReserve,
 		"pinging": a.pinging, "pings": a.pings, "proxyHint": proxyHint, "proxyError": a.proxyErr,
 		"socks": fmt.Sprintf("127.0.0.1:%d", socksPort), "http": fmt.Sprintf("127.0.0.1:%d", httpPort),
-		"wdttActive": w.Active, "wdttStats": w.Stats, "speedUp": a.speedUp, "speedDown": a.speedDn,
+		"wdttSwitching": w.Switching, "wdttActive": w.Active, "wdttStats": w.Stats, "speedUp": a.speedUp, "speedDown": a.speedDn,
 		"wdttAvailable": len(wdttClient) > 0, "now": time.Now().UnixMilli(),
 		"update":       a.upd.State(),
 		"nativeWindow": a.nativeUI() != nil, "windowReady": a.uiReady.Load(),

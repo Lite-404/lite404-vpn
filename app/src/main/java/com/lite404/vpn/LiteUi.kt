@@ -169,12 +169,12 @@ internal fun GlassSegments(
         }
     }
     val radius = 13.dp
+    val lensCorner = if (icon == null) .27f else .16f
     Box(Modifier.fillMaxWidth().padding(vertical = if (icon == null) 9.dp else 15.dp)
-        .then(if (icon == null) Modifier.clip(RoundedCornerShape(radius)) else Modifier)
         .background(colors.surface, RoundedCornerShape(radius))
         .border(1.dp, Color.White.copy(alpha = .085f), RoundedCornerShape(radius))
         .selectableGroup().then(gestures)) {
-        if (glass) DockGlass(labels.size, { pose.value }, cornerFraction = .16f, modifier = Modifier.matchParentSize(), fillSlot = true)
+        if (glass) DockGlass(labels.size, { pose.value }, cornerFraction = lensCorner, modifier = Modifier.matchParentSize(), fillSlot = true)
         else Box(Modifier.matchParentSize().padding(4.dp)) {
             Row(Modifier.matchParentSize()) {
                 labels.indices.forEach { i ->
@@ -189,7 +189,7 @@ internal fun GlassSegments(
             onDrawWithContent {
                 val rect = pose.value.bounds(size, labels.size, fillSlot = true)
                 mask.reset()
-                mask.addRoundRect(RoundRect(rect, CornerRadius(rect.height * .16f)))
+                mask.addRoundRect(RoundRect(rect, CornerRadius(rect.height * lensCorner)))
                 clipPath(mask, if (outside) ClipOp.Difference else ClipOp.Intersect) {
                     this@onDrawWithContent.drawContent()
                 }
