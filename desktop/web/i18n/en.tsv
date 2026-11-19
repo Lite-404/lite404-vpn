@@ -283,6 +283,15 @@ HTTP GET · рекомендуется	HTTP GET · recommended
 Поддержка и исходники	Support and source code
 Переключение сервера...	Switching server...
 Текущий период до %s	Current period ends %s
+Продолжить	Resume
+Пауза	Pause
+Остановлено	Stopped
+Остановка...	Stopping...
+Управление VPN	VPN controls
+Откройте приложение и разрешите подключение VPN	Open the app and allow the VPN connection
+Откройте приложение и войдите в аккаунт	Open the app and sign in
+Обновите подписку в приложении	Refresh the subscription in the app
+Дождитесь завершения текущей операции	Wait for the current operation to finish
 
 Закрыть программу	Quit
 Закрыть программу?	Quit the app?

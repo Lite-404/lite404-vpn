@@ -808,8 +808,8 @@ private fun WdttTab(model: AppModel, live: LiveState, dockClearance: Dp, active:
             transitioning -> "Подключение..."
             else -> "Отключено"
         }), color = signal, fontSize = 12.sp)
-        Text(if (connected && live.wdttSince > 0L) duration(live.now - live.wdttSince).replace(':', ' ') else "00 00 00",
-            fontSize = 34.sp, lineHeight = 40.sp, fontFamily = FontFamily.Monospace, letterSpacing = 1.5.sp)
+        RollingTimer(if (connected && live.wdttSince > 0L) duration(live.now - live.wdttSince).replace(':', ' ') else "00 00 00",
+            running = connected, fontSize = 34.sp, lineHeight = 40.sp, letterSpacing = 1.5.sp)
         Text("↓  " + speed(if (connected) live.down else 0) + "     ↑  " + speed(if (connected) live.up else 0),
             color = Muted, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
         Spacer(Modifier.height(17.dp))

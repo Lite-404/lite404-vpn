@@ -3,7 +3,6 @@ package com.lite404.vpn
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -18,7 +17,6 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
 import android.util.Log
-import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -374,14 +372,11 @@ class TunnelService : Service() {
         }
     }
 
-    private fun buildTunnelNotificationText(): String {
-        val statsText = TunnelManager.stats.value.trim()
-        return when {
-            statsText.isEmpty() -> tr("Туннель активен")
-            statsText == "Ожидание данных..." -> "Туннель активен"
-            else -> statsText
-        }
-    }
+    private fun buildTunnelNotificationText(): String = tr(when {
+        TunnelManager.starting.value || TunnelManager.switchingServer.value -> "Подключение..."
+        TunnelManager.running.value && TunnelManager.activeWorkers.value > 0 && TunnelManager.wireGuardReady.value -> "Подключено"
+        else -> "Подключение..."
+    })
 
     private fun createNotificationChannel() {
         val channel = NotificationChannel(
@@ -399,40 +394,9 @@ class TunnelService : Service() {
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
-    private fun createNotification(text: String, actionName: String = "STOP", actionTitle: String = tr("Отключить")): Notification {
-        val openIntent = PendingIntent.getActivity(
-            this, 0,
-            Intent(this, MainActivity::class.java),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-
-        val stopIntent = PendingIntent.getService(
-            this, if (actionName == "STOP") 1 else 2,
-            Intent(this, TunnelService::class.java).apply { action = actionName },
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-
-        return NotificationCompat.Builder(this, TUNNEL_NOTIFICATION_CHANNEL_ID)
-            .setContentTitle(tr("Резервный VPN"))
-            .setContentText(text)
-            .setSmallIcon(R.drawable.ic_stat_connected)
-            .setOngoing(true)
-            .setLocalOnly(true)
-            .setContentIntent(openIntent)
-            .addAction(R.drawable.ic_stop, actionTitle, stopIntent)
-            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_DEFAULT)
-
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-
-            .setCategory(NotificationCompat.CATEGORY_SERVICE)
-            .setOnlyAlertOnce(true)
-            .setSilent(true)
-            .setShowWhen(false)
-            .setUsesChronometer(false)
-            .setWhen(0L)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .build()
-    }
+    private fun createNotification(text: String): Notification = VpnNotifications.build(
+        this, TUNNEL_NOTIFICATION_CHANNEL_ID, VpnMode.WDTT,
+        VpnNotifications.serverName(this, VpnMode.WDTT, TunnelManager.selectedPeer.value), text)
 
     /** Возвращает false, если система запретила фоновую службу (вместо вылета). */
     private fun startPersistentForeground(notification: Notification): Boolean {
@@ -451,8 +415,9 @@ class TunnelService : Service() {
     }
 
     private fun updateNotification(text: String) {
-        if (lastNotificationText == text) return
-        lastNotificationText = text
+        val key = text + "|" + TunnelManager.selectedPeer.value
+        if (lastNotificationText == key) return
+        lastNotificationText = key
         runCatching {
             val notification = createNotification(text)
             getSystemService(NotificationManager::class.java).notify(TUNNEL_NOTIFICATION_ID, notification)

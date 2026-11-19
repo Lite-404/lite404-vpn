@@ -126,6 +126,7 @@ object Connection {
         primaryRecoveryAttempts = 0
         primaryRecoveryAt = 0L
         primaryRecoveryError = null
+        VpnNotifications.clearPaused(app)
         val prefs = Prefs(app)
         val user = prefs.userLists()
         val usable = profile?.takeIf { if (cachedGeoOnly) Routing.hasGeo(app) else Routing.ensureGeo(app, it) }
@@ -153,6 +154,7 @@ object Connection {
 
     fun connectWdtt(ctx: Context, server: WdttServer, vkHash: String, cachedGeoOnly: Boolean = false) = run(ctx,
         ConnState(VpnMode.WDTT, if (TunnelManager.canSwitchServer(vkHash)) Phase.ON else Phase.CONNECTING)) { app ->
+        VpnNotifications.clearPaused(app)
         if (TunnelManager.canSwitchServer(vkHash)) {
             if (TunnelManager.switchServer(server)) wdttTestedSession = false
             return@run
@@ -174,6 +176,7 @@ object Connection {
 
     fun disconnect(ctx: Context) = run(ctx, ConnState(_state.value.mode, Phase.STOPPING)) { app ->
         abort = false
+        VpnNotifications.clearPaused(app)
         Prefs(app).desiredMode = ""
         XrayVpnService.stopAndWait(app)
         WdttController.stopAndWait(app)
@@ -182,7 +185,7 @@ object Connection {
     fun autoConnect(ctx: Context, boot: Boolean): Job? {
         val prefs = Prefs(ctx)
         if (!(if (boot) prefs.connectOnBoot else prefs.connectOnOpen) ||
-            prefs.token.isBlank() || pending != null || WdttController.active() ||
+            prefs.notificationPause.isNotBlank() || prefs.token.isBlank() || pending != null || WdttController.active() ||
             XrayVpnService.state(ctx) in listOf("running", "connecting") || VpnService.prepare(ctx) != null
         ) return null
         val config = runCatching { AppConfig.parse(prefs.configJson, prefs.configAt) }.getOrNull() ?: return null

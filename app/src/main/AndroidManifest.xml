@@ -47,6 +47,12 @@
                 android:value="persistent_vpn_tunnel_transport" />
         </service>
 
+        <service android:name=".VpnControlService" android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="user_initiated_vpn_notification_action" />
+        </service>
+
         <!-- обычный VPN: ядро Xray в отдельном процессе -->
         <service
             android:name=".XrayVpnService"

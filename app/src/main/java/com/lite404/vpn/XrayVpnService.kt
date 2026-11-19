@@ -1,9 +1,7 @@
 package com.lite404.vpn
 
-import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
@@ -219,6 +217,8 @@ class XrayVpnService : VpnService() {
     private var testJob: Job? = null
     private var testUrl = Prefs.DEFAULT_PING_URL
     private var testAfterConnect = false
+    private var notificationName = ""
+    private var notificationMode = VpnMode.XRAY
 
     private val connectivity by lazy { getSystemService(ConnectivityManager::class.java) }
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
@@ -244,7 +244,9 @@ class XrayVpnService : VpnService() {
                     intent.getBooleanExtra(EXTRA_LAN_DIRECT, true),
                     runCatching { VpnMode.valueOf(intent.getStringExtra(EXTRA_MODE).orEmpty()) }.getOrDefault(VpnMode.XRAY)
                 )
-                foreground(name)
+                notificationName = name
+                notificationMode = options.mode
+                foreground(tr("Подключение..."))
                 bg.post {
                     if (request != command) return@post
                     owner = this
@@ -278,24 +280,10 @@ class XrayVpnService : VpnService() {
         return if (closing) START_NOT_STICKY else START_STICKY
     }
 
-    private fun foreground(name: String) {
+    private fun foreground(status: String) {
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(CHANNEL, "VPN", NotificationManager.IMPORTANCE_LOW))
-        val open = PendingIntent.getActivity(
-            this, 0, Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
-            PendingIntent.FLAG_IMMUTABLE
-        )
-        val stop = PendingIntent.getService(
-            this, 1, Intent(this, XrayVpnService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE
-        )
-        val n = Notification.Builder(this, CHANNEL)
-            .setSmallIcon(R.drawable.ic_stat_connected)
-            .setContentTitle("Lite 404 VPN")
-            .setContentText(if (name.isBlank()) tr("VPN включён") else tr("VPN включён") + " · $name")
-            .setContentIntent(open)
-            .setOngoing(true)
-            .addAction(Notification.Action.Builder(null, tr("Отключить"), stop).build())
-            .build()
+        val n = VpnNotifications.build(this, CHANNEL, notificationMode, notificationName, status)
         if (Build.VERSION.SDK_INT >= 34) startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         else startForeground(NOTIF_ID, n)
     }
@@ -359,6 +347,7 @@ class XrayVpnService : VpnService() {
             needsRecovery = uplink == null
             if (commandId != command) return
             writeState(this, "running", request)
+            main.post { if (commandId == command && !closing) foreground(tr("Подключено")) }
             Log.i(TAG, "VPN started")
             VpnJournal.record(this, mode(this), "VPN: туннель запущен")
             if (testAfterConnect && uplink != null) runTest(testUrl, attempts = 2)

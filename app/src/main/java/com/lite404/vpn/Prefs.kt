@@ -22,6 +22,10 @@ class Prefs(ctx: Context) {
         p.edit().putString("config", raw).putLong("config_at", at).commit()
     }
 
+    var notificationPause: String
+        get() = p.getString("notification_pause", "") ?: ""
+        set(v) = p.edit().putString("notification_pause", v).commit().let { }
+
     var swipeTabsEnabled: Boolean
         get() = p.getBoolean("swipe_tabs_enabled", true)
         set(v) = p.edit().putBoolean("swipe_tabs_enabled", v).apply()

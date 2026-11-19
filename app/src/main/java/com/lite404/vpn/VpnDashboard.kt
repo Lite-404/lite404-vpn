@@ -171,10 +171,7 @@ internal fun VpnDashboard(
                 }
             }
             Spacer(Modifier.height(if (compact) 24.dp else 36.dp))
-            Text(time, color = Color.White, fontFamily = FontFamily.Monospace, fontSize = 36.sp,
-                lineHeight = 44.sp, letterSpacing = 2.sp, maxLines = 1,
-                style = TextStyle(fontFeatureSettings = "zero"),
-                modifier = Modifier.semantics { contentDescription = tr("время подключения") })
+            RollingTimer(time, running = globe == GlobeState.On)
             Spacer(Modifier.height(2.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 Text("↓  $download", color = SecondaryText, fontSize = 10.sp, fontFamily = FontFamily.Monospace)

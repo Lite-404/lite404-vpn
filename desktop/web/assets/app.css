@@ -32,3 +32,12 @@
 @media(max-width:719px){body{min-width:480px}#shell{grid-template-columns:76px minmax(0,1fr)}#sidebar{padding:0 5px}.sidebar-brand{padding:24px 4px 22px;text-align:center;font-size:1rem}.sidebar-brand b,.sidebar-brand small{display:none}#dock.dock>button,#dock.dock>button:last-child{font-size:0;padding:0;justify-content:center;gap:0}#dock.dock>button svg{width:29px;height:29px}.sidebar-footer{padding:14px 2px}.sidebar-footer>div{font-size:.61rem;text-align:center;margin:0 0 12px;overflow-wrap:anywhere}.sidebar-quit{justify-content:center}.sidebar-quit span{display:none}.page{padding:20px 18px 35px}.dashboard{padding:22px 20px 35px}}
 
 .swatch{color:var(--text)}.swatch>span[data-t]{display:block;width:auto;height:auto;margin:6px 0 0;border-radius:0;color:var(--text)}
+
+.timer{display:flex;justify-content:center;white-space:pre}
+.timer-digit{display:inline-block;position:relative;overflow:hidden;width:calc(.6em + 2px);height:1.23em;line-height:1.23em;text-align:center;letter-spacing:0}
+.reserve .timer-digit{width:calc(.6em + 1.5px)}
+.timer-old,.timer-next{position:absolute;inset:0;animation-duration:320ms;animation-timing-function:cubic-bezier(.22,.7,.18,1);animation-fill-mode:both}
+.timer-old{animation-name:timer-out}.timer-next{animation-name:timer-in}
+@keyframes timer-out{0%{transform:translateY(0);opacity:1;filter:blur(0)}50%{filter:blur(2.5px)}100%{transform:translateY(-72%);opacity:0;filter:blur(0)}}
+@keyframes timer-in{0%{transform:translateY(72%);opacity:0;filter:blur(0)}50%{filter:blur(2.5px)}100%{transform:translateY(0);opacity:1;filter:blur(0)}}
+@media(prefers-reduced-motion:reduce){.timer-old{display:none}.timer-next{animation:none}}
